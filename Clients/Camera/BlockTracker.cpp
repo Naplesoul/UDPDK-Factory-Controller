@@ -87,7 +87,6 @@ bool BlockTracker::calibrate(cv::Mat &frame)
         if (area < position_area_max && area > position_area_min) {
             detected_blocks_num += 1;
             blocks.insert(blocks.end(), contour->begin(), contour->end());
-            std::cout << "area: " << area << std::endl;
         }
     }
     if (detected_blocks_num < 4) return false;
@@ -113,7 +112,7 @@ bool BlockTracker::calibrate(cv::Mat &frame)
     sin_val = (top_right.y - top_left.y) / dist_lr * scale;
     cos_val = (top_right.x - top_left.x) / dist_lr * scale;
 
-    std::cout << "scale: " << scale << ", angle: " << angle << std::endl;
+    printf("[Cal]\tscale: %.4fx,\tangle: %.2f°\n", scale, angle);
 
     offset_x = top_left.x;
     offset_y = top_left.y;
@@ -215,7 +214,7 @@ void BlockTracker::update(cv::Mat &frame,
     for (std::list<Block>::iterator block = blocks.begin();
         block != blocks.end(); ++block) {
         
-        std::cout << "Block[" << block->block_id << "] x: " << block->x << ", y: "
-            << block->y << ", speed: " << speed << ", time_interval: " << interval_ms << std::endl;
+        printf("[Block]\tid: %d,\tx: %.2f mm,\ty: %.2f mm,\tspeed: %.4f m/s,\ttime: %ld ms\n",
+            block->block_id, block->x, block->y, speed, interval_ms);
     }
 }

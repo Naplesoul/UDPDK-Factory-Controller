@@ -28,6 +28,9 @@ class BlockTracker
 {
 private:
     // configable parameters
+    // length measured in mm
+    // time measured in ms
+    // speed measured in mm/ms, aka. m/s
     uint32_t id;
     
     cv::Scalar rgb_min;
