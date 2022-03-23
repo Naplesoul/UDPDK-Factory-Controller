@@ -3,11 +3,12 @@
  * @Autor: Weihang Shen
  * @Date: 2022-03-18 13:58:49
  * @LastEditors: Weihang Shen
- * @LastEditTime: 2022-03-18 20:05:40
+ * @LastEditTime: 2022-03-22 21:30:28
  */
 #include "BlockTracker.h"
 
 #include <vector>
+#include <math.h>
 #include <iostream>
 
 void drawRect(cv::Mat &frame, cv::RotatedRect &rect)
@@ -19,20 +20,99 @@ void drawRect(cv::Mat &frame, cv::RotatedRect &rect)
     }
 }
 
-cv::Point2f BlockTracker::toReal(cv::Point2f &camera_point)
+float pointDist(cv::Point2f &p1, cv::Point2f &p2)
 {
-    return camera_point;
+    float dist = powf(p1.x - p2.x, 2) + powf(p1.y - p2.y, 2);
+    dist = sqrtf(dist);
+    return dist;
 }
 
-float BlockTracker::updatePoint(cv::Point2f &camera_point, int64_t interval_ms)
+bool BlockTracker::calibrate(cv::Mat &frame)
 {
-    cv::Point2f real_point = toReal(camera_point);
+    frame_width = frame.cols;
+    frame_height = frame.rows;
+    detect_start_x = frame_width * 0.07;
+    detect_end_x = frame_width - detect_start_x;
+
+    float scale;
+    
+    cv::Mat cvtProcessed, colorSelected;
+    cv::cvtColor(frame, cvtProcessed, cv::COLOR_BGR2Lab);
+    cv::inRange(cvtProcessed, rgb_min, rgb_max, colorSelected);
+
+    std::vector< std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(colorSelected, contours, hierarchy, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+    uint32_t detected_blocks_num = 0;
+    std::vector<cv::Point2f> blocks;
+
+    for (std::vector< std::vector<cv::Point> >::iterator contour = contours.begin();
+         contour != contours.end() && detected_blocks_num < 4; ++contour) {
+        
+        cv::RotatedRect rotatedRect = cv::minAreaRect(*contour);
+        float area = rotatedRect.size.area();
+        
+        if (area < position_area_max && area > position_area_min) {
+            detected_blocks_num += 1;
+            blocks.insert(blocks.end(), contour->begin(), contour->end());
+            std::cout << "area: " << area << std::endl;
+        }
+    }
+    if (detected_blocks_num < 4) return false;
+
+    cv::RotatedRect border = cv::minAreaRect(blocks);
+    
+    cv::Point2f vertices[4];
+    border.points(vertices);
+    cv::Point2f bottom_left = vertices[0];
+    cv::Point2f top_left = vertices[1];
+    cv::Point2f top_right = vertices[2];
+    cv::Point2f bottom_right = vertices[3];
+
+    float dist_lr = pointDist(top_left, top_right);
+    float dist_bt = pointDist(bottom_left, top_left);
+
+    if (dist_lr <= dist_bt) return false;
+
+    scale = actual_width / dist_lr;
+    float angle = border.angle;
+
+    
+    sin_val = (top_right.y - top_left.y) / dist_lr * scale;
+    cos_val = (top_right.x - top_left.x) / dist_lr * scale;
+
+    std::cout << "scale: " << scale << ", angle: " << angle << std::endl;
+
+    offset_x = top_left.x;
+    offset_y = top_left.y;
+
+    drawRect(frame, border);
+    cv::imwrite("bound.png", frame);
+    
+    return true;
+}
+
+cv::Point2f BlockTracker::toReal(const cv::Point2f &camera_point)
+{
+    float x = camera_point.x;
+    float y = camera_point.y;
+
+    float real_x = cos_val * (x - offset_x) + sin_val * (y - offset_y);
+    float real_y = - sin_val * (x - offset_x) + cos_val * (y - offset_y);
+
+    return cv::Point2f(real_x, real_y);
+}
+
+float BlockTracker::updateBlock(const cv::RotatedRect &rect, int64_t interval_ms)
+{
+    cv::Point2f real_point = toReal(rect.center);
     float expected_dist_x = speed * interval_ms;
     float last_expected_x = real_point.x - expected_dist_x;
     float last_expected_y = real_point.y;
 
     for (std::list<Block>::iterator block = blocks.begin();
-        block != blocks.end(); ++ block) {
+        block != blocks.end(); ++block) {
 
         float diff_x = block->x - last_expected_x;
         float diff_y = block->y - last_expected_y;
@@ -44,11 +124,12 @@ float BlockTracker::updatePoint(cv::Point2f &camera_point, int64_t interval_ms)
             float new_center_x = (old_center_x + expected_dist_x + 3 * real_point.x) / 4;
             block->x = new_center_x;
             block->y = (block->y + 3 * real_point.y) / 4;
+            block->updated = true;
             return new_center_x - old_center_x;
         }
     }
 
-    blocks.push_back(Block(real_point.x, real_point.y, next_block_id++));
+    blocks.push_back(Block(next_block_id++, real_point.x, real_point.y, rect.angle));
     return expected_dist_x;
 }
 
@@ -75,11 +156,24 @@ void BlockTracker::update(cv::Mat &frame,
         cv::RotatedRect rotatedRect = cv::minAreaRect(*contour);
         float area = rotatedRect.size.area();
         
-        if (area < area_max && area > area_min) {
+        if (area < area_max && area > area_min
+            && rotatedRect.center.x < detect_end_x
+            && rotatedRect.center.x > detect_start_x) {
             // drawRect(frame, rotatedRect);
-            float dist_x = updatePoint(rotatedRect.center, interval_ms);
+            float dist_x = updateBlock(rotatedRect, interval_ms);
             total_dist_x += dist_x;
             detected_blocks_num += 1;
+        }
+    }
+
+    for (std::list<Block>::iterator block = blocks.begin();
+        block != blocks.end(); ++block) {
+        
+        if (block->updated) {
+            block->updated = false;
+        } else {
+            block = blocks.erase(block);
+            --block;
         }
     }
     
@@ -88,7 +182,7 @@ void BlockTracker::update(cv::Mat &frame,
     last_update_time = capture_time;
     
     for (std::list<Block>::iterator block = blocks.begin();
-        block != blocks.end(); ++ block) {
+        block != blocks.end(); ++block) {
         
         std::cout << "Block[" << block->block_id << "] x: " << block->x << ", y: "
             << block->y << ", speed: " << speed << ", time_interval: " << interval_ms << std::endl;
