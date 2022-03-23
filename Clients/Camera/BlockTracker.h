@@ -27,20 +27,25 @@ struct Block
 class BlockTracker
 {
 private:
-    cv::Scalar rgb_min = cv::Scalar(0, 151, 100);
-    cv::Scalar rgb_max = cv::Scalar(255, 255, 255);
+    // configable parameters
+    uint32_t id;
+    
+    cv::Scalar rgb_min;
+    cv::Scalar rgb_max;
 
-    float position_area_min = 300;
-    float position_area_max = 1000;
+    float position_area_min;
+    float position_area_max;
 
-    float area_min = 3000;
-    float area_max = 100000;
+    float area_min;
+    float area_max;
 
-    float threshold_x = 30;
-    float threshold_y = 20;
+    float threshold_x;
+    float threshold_y;
 
-    float actual_width = 210;
+    float actual_width;
+    float actual_height;
 
+    // runtime parameters
     uint32_t frame_width;
     uint32_t frame_height;
 
@@ -61,8 +66,7 @@ private:
     float updateBlock(const cv::RotatedRect &rect, int64_t interval_ms);
 
 public:
-    BlockTracker(): speed(0), next_block_id(0),
-        last_update_time(std::chrono::system_clock::now()) {}
+    BlockTracker(char *config_json_str);
     ~BlockTracker() {}
 
     bool calibrate(cv::Mat &frame);

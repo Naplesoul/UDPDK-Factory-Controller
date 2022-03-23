@@ -12,6 +12,6 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 set(cJSON_DIR ./lib/cmake/cJSON)
 find_package(cJSON REQUIRED)
-include_directories(${cJSON_INCLUDE_DIR})
+include_directories(${cJSON_INCLUDE_DIRS})
 
-target_link_libraries(camera ${OpenCV_LIBS} ${cJSON_LIBS})
+target_link_libraries(camera ${OpenCV_LIBS} ${CJSON_LIBRARIES})

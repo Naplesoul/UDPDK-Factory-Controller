@@ -1,0 +1,14 @@
+{
+    "id": 1,
+    "kind": "camera",
+    "rgb_min": { "R": 0, "G": 151, "B": 100 },
+    "rgb_max": { "R": 255, "G": 255, "B": 255 },
+    "position_area_min": 300,
+    "position_area_max": 1000,
+    "area_min": 3000,
+    "area_max": 10000,
+    "threshold_x": 30,
+    "threshold_y": 20,
+    "actual_width": 210,
+    "actual_height": 148
+}

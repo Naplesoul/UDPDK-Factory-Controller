@@ -11,6 +11,8 @@
 #include <math.h>
 #include <iostream>
 
+#include "cjson/cJSON.h"
+
 void drawRect(cv::Mat &frame, cv::RotatedRect &rect)
 {
     cv::Point2f vertex[4];
@@ -25,6 +27,35 @@ float pointDist(cv::Point2f &p1, cv::Point2f &p2)
     float dist = powf(p1.x - p2.x, 2) + powf(p1.y - p2.y, 2);
     dist = sqrtf(dist);
     return dist;
+}
+
+BlockTracker::BlockTracker(char *config_json_str):
+    speed(0), next_block_id(0),
+    last_update_time(std::chrono::system_clock::now())
+{
+    cJSON *config_json = cJSON_Parse(config_json_str);
+    id = cJSON_GetObjectItem(config_json, "id")->valueint;
+
+    cJSON *min = cJSON_GetObjectItem(config_json, "rgb_min");
+    cJSON *max = cJSON_GetObjectItem(config_json, "rgb_max");
+    rgb_min = cv::Scalar(cJSON_GetObjectItem(min, "R")->valuedouble,
+                         cJSON_GetObjectItem(min, "G")->valuedouble,
+                         cJSON_GetObjectItem(min, "B")->valuedouble);
+    rgb_max = cv::Scalar(cJSON_GetObjectItem(max, "R")->valuedouble,
+                         cJSON_GetObjectItem(max, "G")->valuedouble,
+                         cJSON_GetObjectItem(max, "B")->valuedouble);
+
+    position_area_max = cJSON_GetObjectItem(config_json, "position_area_max")->valuedouble;
+    position_area_min = cJSON_GetObjectItem(config_json, "position_area_min")->valuedouble;
+
+    area_min = cJSON_GetObjectItem(config_json, "area_min")->valuedouble;
+    area_max = cJSON_GetObjectItem(config_json, "area_max")->valuedouble;
+
+    threshold_x = cJSON_GetObjectItem(config_json, "threshold_x")->valuedouble;
+    threshold_y = cJSON_GetObjectItem(config_json, "threshold_y")->valuedouble;
+
+    actual_width = cJSON_GetObjectItem(config_json, "actual_width")->valuedouble;
+    actual_height = cJSON_GetObjectItem(config_json, "actual_height")->valuedouble;
 }
 
 bool BlockTracker::calibrate(cv::Mat &frame)
