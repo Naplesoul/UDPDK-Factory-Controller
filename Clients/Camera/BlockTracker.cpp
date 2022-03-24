@@ -68,7 +68,10 @@ std::string BlockTracker::toString()
     cJSON_AddStringToObject(message_json, "source", "camera");
     cJSON_AddNumberToObject(message_json, "id", id);
     cJSON_AddNumberToObject(message_json, "speed", speed);
-    cJSON_AddNumberToObject(message_json, "timestamp", last_update_time.time_since_epoch().count());
+    cJSON_AddStringToObject(message_json, "timestamp",
+        std::to_string((uint64_t)last_update_time.time_since_epoch().count()).data());
+    cJSON_AddNumberToObject(message_json, "actual_width", actual_width);
+    cJSON_AddNumberToObject(message_json, "actual_height", actual_height);
     cJSON_AddArrayToObject(message_json, "blocks");
     cJSON *blocks_array = cJSON_GetObjectItem(message_json, "blocks");
     for (std::list<Block>::iterator block = blocks.begin();
