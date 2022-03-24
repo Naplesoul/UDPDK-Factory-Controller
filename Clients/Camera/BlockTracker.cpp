@@ -29,11 +29,10 @@ float pointDist(cv::Point2f &p1, cv::Point2f &p2)
     return dist;
 }
 
-BlockTracker::BlockTracker(char *config_json_str):
+BlockTracker::BlockTracker(cJSON *config_json):
     speed(0), next_block_id(0),
     last_update_time(std::chrono::system_clock::now())
 {
-    cJSON *config_json = cJSON_Parse(config_json_str);
     id = cJSON_GetObjectItem(config_json, "id")->valueint;
 
     cJSON *min = cJSON_GetObjectItem(config_json, "rgb_min");
@@ -56,6 +55,35 @@ BlockTracker::BlockTracker(char *config_json_str):
 
     actual_width = cJSON_GetObjectItem(config_json, "actual_width")->valuedouble;
     actual_height = cJSON_GetObjectItem(config_json, "actual_height")->valuedouble;
+}
+
+uint32_t BlockTracker::blockNum()
+{
+    return blocks.size();
+}
+
+std::string BlockTracker::toString()
+{
+    cJSON *message_json = cJSON_CreateObject();
+    cJSON_AddStringToObject(message_json, "source", "camera");
+    cJSON_AddNumberToObject(message_json, "id", id);
+    cJSON_AddNumberToObject(message_json, "speed", speed);
+    cJSON_AddNumberToObject(message_json, "timestamp", last_update_time.time_since_epoch().count());
+    cJSON_AddArrayToObject(message_json, "blocks");
+    cJSON *blocks_array = cJSON_GetObjectItem(message_json, "blocks");
+    for (std::list<Block>::iterator block = blocks.begin();
+        block != blocks.end(); ++block) {
+        
+        cJSON *block_json = cJSON_CreateObject();
+        cJSON_AddNumberToObject(block_json, "id", block->block_id);
+        cJSON_AddNumberToObject(block_json, "x", block->x);
+        cJSON_AddNumberToObject(block_json, "y", block->y);
+        cJSON_AddNumberToObject(block_json, "angle", block->angle);
+        cJSON_AddItemToArray(blocks_array, block_json);
+    }
+    std::string str(cJSON_PrintUnformatted(message_json));
+    cJSON_free(message_json);
+    return str;
 }
 
 bool BlockTracker::calibrate(cv::Mat &frame)
@@ -106,11 +134,10 @@ bool BlockTracker::calibrate(cv::Mat &frame)
     if (dist_lr <= dist_bt) return false;
 
     scale = actual_width / dist_lr;
-    float angle = border.angle;
-
     
     sin_val = (top_right.y - top_left.y) / dist_lr * scale;
     cos_val = (top_right.x - top_left.x) / dist_lr * scale;
+    angle = asinf(sin_val) / M_PI * 180;
 
     printf("[Cal]\tscale: %.4fx,\tangle: %.2f°\n", scale, angle);
 
@@ -154,6 +181,7 @@ float BlockTracker::updateBlock(const cv::RotatedRect &rect, int64_t interval_ms
             float new_center_x = (old_center_x + expected_dist_x + 3 * real_point.x) / 4;
             block->x = new_center_x;
             block->y = (block->y + 3 * real_point.y) / 4;
+            block->angle = (block->angle + 3 * rect.angle) / 4;
             block->updated = true;
             return new_center_x - old_center_x;
         }

@@ -10,5 +10,8 @@
     "threshold_x": 30,
     "threshold_y": 20,
     "actual_width": 210,
-    "actual_height": 148
+    "actual_height": 148,
+
+    "server_ip": "192.168.0.102",
+    "server_port": 50000
 }

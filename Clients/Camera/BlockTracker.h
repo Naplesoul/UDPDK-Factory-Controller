@@ -9,6 +9,7 @@
 #include <vector>
 #include <chrono>
 #include <stdint.h>
+#include "cjson/cJSON.h"
 #include "opencv2/opencv.hpp"
 
 void drawRect(cv::Mat &frame, cv::RotatedRect &rect);
@@ -55,6 +56,7 @@ private:
     float detect_start_x;
     float detect_end_x;
 
+    float angle;
     float sin_val;
     float cos_val;
     float offset_x;
@@ -69,9 +71,11 @@ private:
     float updateBlock(const cv::RotatedRect &rect, int64_t interval_ms);
 
 public:
-    BlockTracker(char *config_json_str);
+    BlockTracker(cJSON *config_json);
     ~BlockTracker() {}
 
+    uint32_t blockNum();
+    std::string toString();
     bool calibrate(cv::Mat &frame);
     void update(cv::Mat &frame,
                 std::chrono::system_clock::time_point capture_time);
