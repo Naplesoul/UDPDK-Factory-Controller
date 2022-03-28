@@ -48,6 +48,9 @@
         "type_traits": "cpp",
         "tuple": "cpp",
         "typeinfo": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "memory_resource": "cpp",
+        "future": "cpp",
+        "numeric": "cpp"
     }
 }

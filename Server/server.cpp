@@ -1,6 +1,27 @@
-#include <udpdk_api.h>
+#include "UDPServer.h"
+#include "Scheduler.h"
+#include <thread>
 
-int main()
+UDPServer* udp_server = new UDPServer();
+Scheduler* simulator = new Scheduler(udp_server);
+
+void run_udp_server()
 {
-    int socket = udpdk_socket(AF_INET, SOCK_STREAM, 0);
+    udp_server->run();
+}
+
+void run_simulator()
+{
+    simulator->run();
+}
+
+int main(int argc, char *argv[])
+{
+    std::thread udp_thread(run_udp_server);
+    std::thread sim_thread(run_simulator);
+
+    udp_thread.join();
+    sim_thread.join();
+
+    return 0;
 }

@@ -14,3 +14,4 @@ include
 lib
 
 .DS_Store
+build
