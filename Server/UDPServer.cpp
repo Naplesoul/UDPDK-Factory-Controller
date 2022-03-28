@@ -5,7 +5,7 @@
 #define DEFAULT_SERVER_PORT 8080
 #define BUFFER_SIZE 1024
 
-int Client::next_id = 0;
+int UDPClient::next_id = 0;
 
 UDPServer::UDPServer(/* args */)
 {
@@ -65,7 +65,7 @@ void UDPServer::run()
             }
         }
         if (new_client){
-            Client* c = new Client(client_addr);
+            UDPClient* c = new UDPClient(client_addr);
             mClients.push_back(c);
 
             req_list_mtx.lock();

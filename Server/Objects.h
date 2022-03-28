@@ -1,5 +1,6 @@
 #pragma once
 
+#include <list>
 #include <string>
 
 class Object
@@ -20,12 +21,33 @@ public:
     ~Object(){}
 };
 
+class Block: public Object
+{
+public:
+    int block_id;
+    int producer_client_id;
+    int consumer_client_id = -1;
+    double speed;
+    uint64_t last_msg_time;
+
+    virtual void update(int delta_time) override;
+    virtual std::string toJsonString() override;
+
+    Block(double x, double y, double angle, int block_id,
+          int producer_client_id, double speed, uint64_t msg_time):
+        Object(x, y, angle), block_id(block_id),
+        producer_client_id(producer_client_id),
+        speed(speed), last_msg_time(msg_time) {}
+    ~Block() {}
+};
+
 class Arm: public Object
 {
 public:
     double radius;
     int client_id;
     bool enabled;
+    int producer_client_id = -1;
 
     virtual std::string toJsonString() override;
 
@@ -36,29 +58,12 @@ public:
     ~Arm() {}
 };
 
-class Block: public Object
-{
-public:
-    int rsp_arm_id = -1;
-    int block_id;
-    double speed;
-    uint64_t last_msg_time;
-
-    virtual void update(int delta_time) override;
-    virtual std::string toJsonString() override;
-
-    Block(double x, double y, double angle,
-          int block_id, double speed, uint64_t msg_time):
-        Object(x, y, angle), block_id(block_id),
-        speed(speed), last_msg_time(msg_time) {}
-    ~Block() {}
-};
-
 class Camera: public Object
 {
 public:
     double w, h;
     int client_id;
+    std::list<Arm *> consumers;
 
     virtual std::string toJsonString() override;
 

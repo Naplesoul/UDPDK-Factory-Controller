@@ -1,5 +1,11 @@
 #include "Scheduler.h"
-#include <math.h>
+
+#include <chrono>
+
+uint64_t getCurTime()
+{
+    
+}
 
 Scheduler::Scheduler(UDPServer* server)
 {
@@ -11,17 +17,9 @@ Scheduler::~Scheduler()
     
 }
 
-void updateTime()
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
 void Scheduler::run()
 {
-    updateTime();
-    printf("[Sim][%llu] start simulator\n", cur_time);
+    printf("[Sim][%llu] start simulator\n", getCurTime());
 
     while (1) {
         handleMsg();
@@ -29,12 +27,17 @@ void Scheduler::run()
     }
 }
 
+void Scheduler::sendTasks()
+{
+    
+}
+
 void Scheduler::handleMsg()
 {
     Message* msg;
     while (msg = udp_server->popMsg()) {
         printf("[SIM][%llu] parse request from client: %d\n\tcontent: %s\n",
-               cur_time, msg->client_id, msg->content.c_str());
+               getCurTime(), msg->client_id, msg->content.c_str());
 
         Json::Reader reader;
         Json::Value json;
@@ -69,13 +72,12 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
 
     // update camera
     if (cameras.find(msg->client_id) == cameras.end()) {
-        Camera *new_cam = new Camera(json["x"].asDouble(),
-                                     json["y"].asDouble(),
-                                     json["angle"].asDouble(),
-                                     json["actual_width"].asDouble(),
-                                     json["actual_height"].asDouble(),
-                                     msg->client_id);
-        cameras[msg->client_id] = new_cam;
+        addCamera(json["x"].asDouble(),
+                  json["y"].asDouble(),
+                  json["angle"].asDouble(),
+                  json["actual_width"].asDouble(),
+                  json["actual_height"].asDouble(),
+                  msg->client_id);
     } else {
         Camera *cam = cameras[msg->client_id];
         cam->x = json["x"].asDouble();
@@ -100,6 +102,7 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
                                          msg_block["y"].asDouble(),
                                          msg_block["angle"].asDouble(),
                                          msg_block["id"].asInt(),
+                                         msg->client_id,
                                          speed, msg_time);
             blocks[block_id] = new_block;
         } else {
@@ -125,13 +128,12 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
     }
 
     if (arms.find(msg->client_id) == arms.end()) {
-        Arm *new_arm = new Arm(json["x"].asDouble(),
-                               json["y"].asDouble(),
-                               json["angle"].asDouble(),
-                               json["r"].asDouble(),
-                               msg->client_id,
-                               json["enabled"].asBool());
-        arms[msg->client_id] = new_arm;
+        addArm(json["x"].asDouble(),
+               json["y"].asDouble(),
+               json["angle"].asDouble(),
+               json["r"].asDouble(),
+               msg->client_id,
+               json["enabled"].asBool());
     } else {
         Arm* arm = arms[msg->client_id];
         arm->x = json["x"].asDouble();
@@ -144,13 +146,87 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
 
 void Scheduler::handleScadaMsg(Message *msg, const Json::Value &json)
 {
-    if (!mSCADA) mSCADA = new SCADA(msg->client_id);
-    if (mSCADA->id == msg->client_id){
+    if (!scada) scada = new SCADA(msg->client_id);
+    if (scada->id == msg->client_id){
         // parse actions from SCADA, like delete divice, relocate divice, or debug
     }
 }
 
-void Scheduler::sendTasks()
+void Scheduler::addArm(double x, double y, double angle,
+                       double radius, int client_id, bool enabled)
 {
-    
+    Arm *new_arm = new Arm(x, y, angle, radius, client_id, enabled);
+
+    Camera *front_camera = nullptr;
+    for (auto &cam: cameras) {
+        double cam_x = cam.second->x;
+        if (cam_x < x
+            && (front_camera == nullptr
+                || front_camera->x < cam_x)) {
+            front_camera = cam.second;
+        }
+    }
+
+    if (front_camera) {
+        for (auto it = front_camera->consumers.begin();
+             it != front_camera->consumers.begin(); ++it) {
+            
+            if ((*it)->x > x) {
+                new_arm->producer_client_id = (*it)->client_id;
+                front_camera->consumers.insert(it, new_arm);
+                break;
+            }
+        }
+    }
+
+    arms[client_id] = new_arm;
+}
+
+void Scheduler::addCamera(double x, double y, double angle,
+                          double w, double h, int client_id)
+{
+    Camera *new_cam = new Camera(x, y, angle, w, h, client_id);
+
+    Camera *front_camera = nullptr;
+    for (auto &cam: cameras) {
+        double cam_x = cam.second->x;
+        if (cam_x < x
+            && (front_camera == nullptr
+                || front_camera->x < cam_x)) {
+            front_camera = cam.second;
+        }
+    }
+
+    if (front_camera) {
+        for (auto it = front_camera->consumers.begin();
+             it != front_camera->consumers.begin(); ++it) {
+            
+            if ((*it)->x > x) {
+                new_cam->consumers.insert(new_cam->consumers.begin(),
+                                          it, front_camera->consumers.end());
+                front_camera->consumers.erase(it, front_camera->consumers.end());
+                break;
+            }
+        }
+    } else {
+        for (auto &arm : arms) {
+            if (arm.second->producer_client_id >= 0
+                || arm.second->x < x) continue;
+
+            for (auto it = new_cam->consumers.begin();
+                 it != new_cam->consumers.begin(); ++it) {
+                
+                if ((*it)->x > arm.second->x) {
+                    new_cam->consumers.insert(it, arm.second);
+                    break;
+                }
+            }
+        }
+    }
+
+    for (auto consumer : new_cam->consumers) {
+        consumer->producer_client_id = client_id;
+    }
+
+    cameras[client_id] = new_cam;
 }

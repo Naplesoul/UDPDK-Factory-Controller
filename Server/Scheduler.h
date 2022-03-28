@@ -1,21 +1,19 @@
 #pragma once
 
 #include <map>
-#include <list>
-#include <vector>
 #include <stdint.h>
-#include <sys/time.h>
 #include <jsoncpp/json/json.h>
 
 #include "Objects.h"
 #include "UDPServer.h"
 
+uint64_t getCurTime();
+
 class Scheduler
 {
 private:
-    uint64_t cur_time;
+    SCADA* scada;
     UDPServer* udp_server;
-    SCADA* mSCADA;
 
     // client_id => arm
     std::map<int, Arm *> arms;
@@ -23,10 +21,9 @@ private:
     std::map<int, Camera *> cameras;
     // block_id => block
     std::map<int, Block *> blocks;
-    std::list<Object *> clients;
 
-    void handleMsg();
     void sendTasks();
+    void handleMsg();
 
     void handleCamMsg(Message *msg, const Json::Value &json);
     void handleArmMsg(Message *msg, const Json::Value &json);
@@ -37,4 +34,9 @@ public:
     ~Scheduler();
 
     void run();
+    
+    void addArm(double x, double y, double angle,
+                double radius, int client_id, bool enabled);
+    void addCamera(double x, double y, double angle,
+                   double w, double h, int client_id);
 };

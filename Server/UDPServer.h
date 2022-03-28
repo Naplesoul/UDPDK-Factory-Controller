@@ -11,7 +11,7 @@
 #include <netinet/in.h>
 #include <string.h>
 
-class Client
+class UDPClient
 {
 private:
     static int next_id;
@@ -20,9 +20,9 @@ public:
     int client_id;
     struct sockaddr_in addr;
     
-    Client(struct sockaddr_in addr):
+    UDPClient(struct sockaddr_in addr):
         client_id(next_id++), addr(addr) {}
-    ~Client() {}
+    ~UDPClient() {}
 };
 
 class Message
@@ -42,7 +42,7 @@ private:
     int server_fd;
     std::mutex req_list_mtx;
     // std::map<int, Client*> clients;
-    std::list<Client*> mClients;
+    std::list<UDPClient*> mClients;
     std::list<Message*> mPendingRequests;
 public:
     void run();
