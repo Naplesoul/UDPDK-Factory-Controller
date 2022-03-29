@@ -63,17 +63,17 @@ class Arm: public Object
 public:
     double radius;
     int client_id;
-    bool enabled;
     int producer_client_id = -1;
+    TimePoint last_heartbeat_time;
     std::map<int, Block *> assigned_blocks;
 
+    void updateHeartbeat();
     virtual std::string toJsonString() override;
     virtual std::string toJsonString(TimePoint cur_time) override;
 
-    Arm(double x, double y, double radius,
-        int client_id, bool enabled):
-        Object(x, y, 0), radius(radius),
-        client_id(client_id), enabled(enabled) {}
+    Arm(double x, double y, double radius, int client_id):
+        Object(x, y, 0), radius(radius), client_id(client_id),
+        last_heartbeat_time(std::chrono::system_clock::now()) {}
     ~Arm() {}
 };
 
@@ -83,23 +83,29 @@ public:
     double w, h;
     double end_x = std::numeric_limits<double>::max();
     int client_id;
+    TimePoint last_heartbeat_time;
     std::list<Arm *> consumers;
 
+    void updateHeartbeat();
     virtual std::string toJsonString() override;
     virtual std::string toJsonString(TimePoint cur_time) override;
 
     Camera(double x, double y,
            double w, double h, int client_id):
-        Object(x, y, 0), w(w), h(h), client_id(client_id) {}
+        Object(x, y, 0), w(w), h(h), client_id(client_id),
+        last_heartbeat_time(std::chrono::system_clock::now()) {}
     ~Camera() {}
 };
 
 class SCADA
 {
 public:
-    int id;
     int client_id;
+    TimePoint last_heartbeat_time;
 
-    SCADA(int id): id(id) {}
+    SCADA(int client_id): client_id(client_id),
+        last_heartbeat_time(std::chrono::system_clock::now()) {}
     ~SCADA() {}
+
+    void updateHeartbeat();
 };

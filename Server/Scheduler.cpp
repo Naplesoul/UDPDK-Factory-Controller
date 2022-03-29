@@ -23,11 +23,6 @@ TimePoint getCurTime()
     return std::chrono::system_clock::now();
 }
 
-Scheduler::Scheduler(UDPServer* server)
-{
-    udp_server = server;
-}
-
 Scheduler::~Scheduler()
 {
     for (auto arm : arms) delete arm.second;
@@ -43,12 +38,46 @@ void Scheduler::run()
         int64_t start_us = getCurUs();
 
         handleMsg();
+        checkAlive();
         schedule();
         sendTasks();
 
         int64_t end_us = getCurUs();
         int64_t time_to_sleep = start_us + 15000 - end_us;
         if (time_to_sleep > 0) usleep(time_to_sleep);
+    }
+}
+
+void Scheduler::checkAlive()
+{
+    TimePoint cur_time = getCurTime();
+    
+    for (auto &cam : cameras) {
+        int64_t period = std::chrono::duration_cast
+            <std::chrono::milliseconds>
+            (cur_time - cam.second->last_heartbeat_time).count();
+        if (period > CLIENT_TIMEOUT) {
+            removeCamera(cam.second->client_id);
+        }
+    }
+
+    for (auto &arm : cameras) {
+        int64_t period = std::chrono::duration_cast
+            <std::chrono::milliseconds>
+            (cur_time - arm.second->last_heartbeat_time).count();
+        if (period > CLIENT_TIMEOUT) {
+            removeArm(arm.second->client_id);
+        }
+    }
+
+    if (scada) {
+        int64_t period = std::chrono::duration_cast
+            <std::chrono::milliseconds>
+            (cur_time - scada->last_heartbeat_time).count();
+        if (period > CLIENT_TIMEOUT) {
+            delete scada;
+            scada = nullptr;
+        }
     }
 }
 
@@ -142,13 +171,16 @@ void Scheduler::handleMsg()
 
 void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
 {
+    Camera *cam = cameras[msg->client_id];
+    if (cam) cam->updateHeartbeat();
+
     if (json["message_type"].empty()) {
         printf("\terror: missing message_type!!\n");
         return;
     }
 
-    if (json["message_type"].asString() == "register") {
-        if (cameras.find(msg->client_id) == cameras.end()) {
+    if (json["message_type"].asString() == "heartbeat") {
+        if (!cam) {
             addCamera(json["x"].asDouble(),
                       json["y"].asDouble(),
                       json["w"].asDouble(),
@@ -158,10 +190,7 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
         return;
     }
 
-    if (json["message_type"].asString() == "close") {
-        removeCamera(msg->client_id);
-        return;
-    }
+    if (!cam) return;
 
     if (!json["blocks"].isArray()
         || json["speed"].empty()
@@ -182,17 +211,8 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
         Json::Value msg_block = msg_blocks[idx];
         int block_id = msg_block["id"].asInt();
 
-        if (blocks.find(block_id) == blocks.end()) {
-            Block *new_block = new Block(msg_block["x"].asDouble(),
-                                         msg_block["y"].asDouble(),
-                                         msg_block["angle"].asDouble(),
-                                         msg_block["id"].asInt(),
-                                         msg->client_id,
-                                         speed, msg_time);
-            blocks[block_id] = new_block;
-        } else {
-            Block *block = blocks[block_id];
-
+        Block *block = blocks[block_id];
+        if (block) {
             // udp packets may not come in order
             if (msg_time > block->last_msg_time) {
                 block->x = msg_block["x"].asDouble();
@@ -201,44 +221,50 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
                 block->speed = speed;
                 block->last_msg_time = msg_time;
             }
+        } else {
+            Block *new_block = new Block(msg_block["x"].asDouble(),
+                                         msg_block["y"].asDouble(),
+                                         msg_block["angle"].asDouble(),
+                                         msg_block["id"].asInt(),
+                                         msg->client_id,
+                                         speed, msg_time);
+            blocks[block_id] = new_block;
         }
     }
 }
 
 void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
 {
-    if (!json["enabled"].isArray()) {
-        printf("\terror: missing arguement(s)!!\n");
+    Arm *arm = arms[msg->client_id];
+    if (arm) arm->updateHeartbeat();
+
+    if (json["message_type"].empty()) {
+        printf("\terror: missing message_type!!\n");
         return;
     }
 
-    if (arms.find(msg->client_id) == arms.end()) {
-        addArm(json["x"].asDouble(),
-               json["y"].asDouble(),
-               json["r"].asDouble(),
-               msg->client_id,
-               json["enabled"].asBool());
-    } else {
-        Arm* arm = arms[msg->client_id];
-        arm->x = json["x"].asDouble();
-        arm->y = json["y"].asDouble();
-        arm->radius = json["r"].asDouble();
-        arm->enabled = json["enabled"].asBool();
+    if (json["message_type"].asString() == "heartbeat") {
+        if (!arm) {
+            addArm(json["x"].asDouble(),
+                   json["y"].asDouble(),
+                   json["r"].asDouble(),
+                   msg->client_id);
+        }
+        return;
     }
+    
+    if (!arm) return;
 }
 
 void Scheduler::handleScadaMsg(Message *msg, const Json::Value &json)
 {
     if (!scada) scada = new SCADA(msg->client_id);
-    if (scada->id == msg->client_id){
-        // parse actions from SCADA, like delete divice, relocate divice, or debug
-    }
+    else scada->updateHeartbeat();
 }
 
-void Scheduler::addArm(double x, double y, double radius,
-                       int client_id, bool enabled)
+void Scheduler::addArm(double x, double y, double radius, int client_id)
 {
-    Arm *new_arm = new Arm(x, y, radius, client_id, enabled);
+    Arm *new_arm = new Arm(x, y, radius, client_id);
     arms[client_id] = new_arm;
 
     // find the nearest camera in front

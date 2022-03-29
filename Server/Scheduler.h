@@ -7,6 +7,8 @@
 #include "Objects.h"
 #include "UDPServer.h"
 
+#define CLIENT_TIMEOUT 5000
+
 uint64_t getCurMs();
 uint64_t getCurUs();
 TimePoint getCurTime();
@@ -14,7 +16,7 @@ TimePoint getCurTime();
 class Scheduler
 {
 private:
-    SCADA* scada;
+    SCADA* scada = nullptr;
     UDPServer* udp_server;
 
     // client_id => arm
@@ -25,6 +27,7 @@ private:
     std::map<int, Block *> blocks;
 
     void schedule();
+    void checkAlive();
     void sendTasks();
     void handleMsg();
 
@@ -33,13 +36,12 @@ private:
     void handleScadaMsg(Message *msg, const Json::Value &json);
 
 public:
-    Scheduler(UDPServer*);
+    Scheduler(UDPServer *s): udp_server(s) {}
     ~Scheduler();
 
     void run();
 
-    void addArm(double x, double y, double radius,
-                int client_id, bool enabled);
+    void addArm(double x, double y, double radius, int client_id);
     void addCamera(double x, double y,
                    double w, double h, int client_id);
     void removeArm(int client_id);

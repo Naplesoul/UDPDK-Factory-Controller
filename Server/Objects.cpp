@@ -73,6 +73,11 @@ std::string Block::toJsonString(TimePoint cur_time)
     return v.toStyledString();
 }
 
+void Arm::updateHeartbeat()
+{
+    last_heartbeat_time = std::chrono::system_clock::now();
+}
+
 std::string Arm::toJsonString()
 {
     Json::Value v;
@@ -81,7 +86,6 @@ std::string Arm::toJsonString()
     v["class"] = Json::Value("arm");
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
-    v["enabled"] = Json::Value(enabled);
     v["angle"] = Json::Value(angle);
 
     return v.toStyledString();
@@ -90,6 +94,11 @@ std::string Arm::toJsonString()
 std::string Arm::toJsonString(TimePoint cur_time)
 {
     return toJsonString();
+}
+
+void Camera::updateHeartbeat()
+{
+    last_heartbeat_time = std::chrono::system_clock::now();
 }
 
 std::string Camera::toJsonString()
@@ -110,4 +119,9 @@ std::string Camera::toJsonString()
 std::string Camera::toJsonString(TimePoint cur_time)
 {
     return toJsonString();
+}
+
+void SCADA::updateHeartbeat()
+{
+    last_heartbeat_time = std::chrono::system_clock::now();
 }
