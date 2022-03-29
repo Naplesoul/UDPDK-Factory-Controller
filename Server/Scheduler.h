@@ -42,4 +42,6 @@ public:
                 int client_id, bool enabled);
     void addCamera(double x, double y,
                    double w, double h, int client_id);
+    void removeArm(int client_id);
+    void removeCamera(int client_id);
 };

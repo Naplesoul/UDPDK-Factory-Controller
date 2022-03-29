@@ -142,27 +142,33 @@ void Scheduler::handleMsg()
 
 void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
 {
+    if (json["message_type"].empty()) {
+        printf("\terror: missing message_type!!\n");
+        return;
+    }
+
+    if (json["message_type"].asString() == "register") {
+        if (cameras.find(msg->client_id) == cameras.end()) {
+            addCamera(json["x"].asDouble(),
+                      json["y"].asDouble(),
+                      json["w"].asDouble(),
+                      json["h"].asDouble(),
+                      msg->client_id);
+        }
+        return;
+    }
+
+    if (json["message_type"].asString() == "close") {
+        removeCamera(msg->client_id);
+        return;
+    }
+
     if (!json["blocks"].isArray()
         || json["speed"].empty()
         || json["timestamp"].empty()) {
         
         printf("\terror: missing arguement(s)!!\n");
         return;
-    }
-
-    // update camera
-    if (cameras.find(msg->client_id) == cameras.end()) {
-        addCamera(json["x"].asDouble(),
-                  json["y"].asDouble(),
-                  json["actual_width"].asDouble(),
-                  json["actual_height"].asDouble(),
-                  msg->client_id);
-    } else {
-        Camera *cam = cameras[msg->client_id];
-        cam->x = json["x"].asDouble();
-        cam->y = json["y"].asDouble();
-        cam->w = json["actual_width"].asDouble();
-        cam->h = json["actual_height"].asDouble();
     }
 
     // add blocks found by camera
@@ -308,4 +314,14 @@ void Scheduler::addCamera(double x, double y,
     for (auto consumer : new_cam->consumers) {
         consumer->producer_client_id = client_id;
     }
+}
+
+void Scheduler::removeArm(int client_id)
+{
+
+}
+
+void Scheduler::removeCamera(int client_id)
+{
+
 }
