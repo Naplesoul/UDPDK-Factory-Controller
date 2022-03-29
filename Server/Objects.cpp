@@ -6,6 +6,31 @@
 
 int Object::next_id = 0;
 
+std::string
+toJsonString(const std::map<int, Block *> &m)
+{
+    Json::Value v;
+    Json::Value arr;
+
+    for (auto &b : m) {
+        Json::Value block;
+
+        block["id"] = Json::Value(b.second->block_id);
+        block["x"] = Json::Value(b.second->x);
+        block["y"] = Json::Value(b.second->y);
+        block["speed"] = Json::Value(b.second->speed);
+        block["angle"] = Json::Value(b.second->angle);
+        block["timestamp"] = Json::Value(std::to_string(
+            b.second->last_msg_time.time_since_epoch().count()));
+        
+        arr.append(block);
+    }
+
+    v["blocks"] = arr;
+
+    return v.toStyledString();
+}
+
 bool objCompare(Object *a, Object *b)
 {
     return a->x < b->x;
@@ -53,7 +78,7 @@ std::string Block::toJsonString()
     v["y"] = Json::Value(y);
     v["speed"] = Json::Value(speed);
     v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(producer_client_id);
+    v["arm"] = Json::Value(consumer_client_id);
 
     return v.toStyledString();
 }
@@ -69,7 +94,7 @@ std::string Block::toJsonString(TimePoint cur_time)
     v["y"] = Json::Value(y);
     v["speed"] = Json::Value(speed);
     v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(producer_client_id);
+    v["arm"] = Json::Value(consumer_client_id);
 
     return v.toStyledString();
 }

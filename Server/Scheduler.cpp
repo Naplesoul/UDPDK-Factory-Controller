@@ -144,10 +144,7 @@ void Scheduler::sendTasks()
 {
     for (auto &arm_entry : arms) {
         Arm *arm = arm_entry.second;
-        for (auto &block_entry : arm->assigned_blocks) {
-            Block *block = block_entry.second;
-            udp_server->send2(arm->client_id, block->toJsonString());
-        }
+        udp_server->send2(arm->client_id, toJsonString(arm->assigned_blocks));
     }
 }
 

@@ -8,6 +8,9 @@
 
 using TimePoint = std::chrono::system_clock::time_point;
 
+std::string
+toJsonString(const std::map<int, Block *> &m);
+
 struct Point
 {
     double x, y;
