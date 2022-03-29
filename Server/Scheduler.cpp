@@ -156,7 +156,9 @@ void Scheduler::addArm(double x, double y, double angle,
                        double radius, int client_id, bool enabled)
 {
     Arm *new_arm = new Arm(x, y, angle, radius, client_id, enabled);
+    arms[client_id] = new_arm;
 
+    // find the nearest camera in front
     Camera *front_camera = nullptr;
     for (auto &cam: cameras) {
         double cam_x = cam.second->x;
@@ -167,19 +169,12 @@ void Scheduler::addArm(double x, double y, double angle,
         }
     }
 
-    if (front_camera) {
-        for (auto it = front_camera->consumers.begin();
-             it != front_camera->consumers.begin(); ++it) {
-            
-            if ((*it)->x > x) {
-                new_arm->producer_client_id = (*it)->client_id;
-                front_camera->consumers.insert(it, new_arm);
-                break;
-            }
-        }
-    }
+    if (!front_camera) return;
 
-    arms[client_id] = new_arm;
+    // set producer and consumer
+    new_arm->producer_client_id = front_camera->client_id;
+    front_camera->consumers.push_back(new_arm);
+    front_camera->consumers.sort(objCompare);
 }
 
 void Scheduler::addCamera(double x, double y, double angle,
@@ -187,6 +182,7 @@ void Scheduler::addCamera(double x, double y, double angle,
 {
     Camera *new_cam = new Camera(x, y, angle, w, h, client_id);
 
+    // find the nearest camera in front
     Camera *front_camera = nullptr;
     for (auto &cam: cameras) {
         double cam_x = cam.second->x;
@@ -197,11 +193,14 @@ void Scheduler::addCamera(double x, double y, double angle,
         }
     }
 
+    cameras[client_id] = new_cam;
+
     if (front_camera) {
         for (auto it = front_camera->consumers.begin();
              it != front_camera->consumers.begin(); ++it) {
             
             if ((*it)->x > x) {
+                // take consumers after it
                 new_cam->consumers.insert(new_cam->consumers.begin(),
                                           it, front_camera->consumers.end());
                 front_camera->consumers.erase(it, front_camera->consumers.end());
@@ -210,23 +209,16 @@ void Scheduler::addCamera(double x, double y, double angle,
         }
     } else {
         for (auto &arm : arms) {
+            // take all consumers after which does not have producer yet
             if (arm.second->producer_client_id >= 0
                 || arm.second->x < x) continue;
-
-            for (auto it = new_cam->consumers.begin();
-                 it != new_cam->consumers.begin(); ++it) {
-                
-                if ((*it)->x > arm.second->x) {
-                    new_cam->consumers.insert(it, arm.second);
-                    break;
-                }
-            }
+            new_cam->consumers.push_back(arm.second);
         }
+        new_cam->consumers.sort(objCompare);
     }
+
 
     for (auto consumer : new_cam->consumers) {
         consumer->producer_client_id = client_id;
     }
-
-    cameras[client_id] = new_cam;
 }

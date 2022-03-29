@@ -21,6 +21,8 @@ public:
     ~Object(){}
 };
 
+bool objCompare(Object *a, Object *b);
+
 class Block: public Object
 {
 public:

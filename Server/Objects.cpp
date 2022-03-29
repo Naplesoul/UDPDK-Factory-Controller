@@ -5,6 +5,11 @@
 
 int Object::next_id = 0;
 
+bool objCompare(Object *a, Object *b)
+{
+    return a->x < b->x;
+}
+
 std::string Object::toJsonString()
 {
     Json::Value v;
@@ -47,7 +52,7 @@ std::string Block::toJsonString()
     v["y"] = Json::Value(y);
     v["speed"] = Json::Value(speed);
     v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(rsp_arm_id);
+    v["arm"] = Json::Value(producer_client_id);
 
     return v.toStyledString();
 }
