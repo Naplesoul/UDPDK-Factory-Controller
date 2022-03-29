@@ -50,14 +50,17 @@ void Scheduler::run()
 
 void Scheduler::checkAlive()
 {
+    // remove dead cams, arms and scada
     TimePoint cur_time = getCurTime();
+    std::list<int> cam_id_to_remove;
+    std::list<int> arm_id_to_remove;
     
     for (auto &cam : cameras) {
         int64_t period = std::chrono::duration_cast
             <std::chrono::milliseconds>
             (cur_time - cam.second->last_heartbeat_time).count();
         if (period > CLIENT_TIMEOUT) {
-            removeCamera(cam.second->client_id);
+            cam_id_to_remove.push_back(cam.second->client_id);
         }
     }
 
@@ -66,9 +69,12 @@ void Scheduler::checkAlive()
             <std::chrono::milliseconds>
             (cur_time - arm.second->last_heartbeat_time).count();
         if (period > CLIENT_TIMEOUT) {
-            removeArm(arm.second->client_id);
+            arm_id_to_remove.push_back(arm.second->client_id);
         }
     }
+
+    for (int arm_id : arm_id_to_remove) removeArm(arm_id);
+    for (int cam_id : cam_id_to_remove) removeCamera(cam_id);
 
     if (scada) {
         int64_t period = std::chrono::duration_cast
@@ -84,20 +90,22 @@ void Scheduler::checkAlive()
 void Scheduler::schedule()
 {
     TimePoint cur_time = getCurTime();
-    std::list<int> block_id_to_remove;
+    std::list<Block *> blocks_to_remove;
 
     for (auto &block_entry : blocks) {
         Block *block = block_entry.second;
         Camera *cam = cameras[block->producer_client_id];
-        if (!cam) continue;
+        if (!cam) {
+            blocks_to_remove.push_back(block);
+            continue;
+        }
 
-        double cur_x = block->getPosition(cur_time).x;
+        Point cur_pos = block->getPosition(cur_time);
+        double cur_x = cur_pos.x;
         if (cur_x >= cam->end_x) {
             // block is out of camera's domain range
             // delete block
-            Arm *arm = arms[block->consumer_client_id];
-            if (arm) arm->assigned_blocks.erase(block->block_id);
-            block_id_to_remove.push_back(block->block_id);
+            blocks_to_remove.push_back(block);
             continue;
         }
 
@@ -107,11 +115,12 @@ void Scheduler::schedule()
         // choose the arm with the least blocks assigned
         size_t blocks_num = std::numeric_limits<size_t>::max();
         Arm *selected_arm = nullptr;
-        for (auto arm : cam->consumers) {
-            size_t cur_blocks_num = arm->assigned_blocks.size();
-            if (cur_blocks_num < blocks_num) {
+        for (auto &arm : cam->consumers) {
+            size_t cur_blocks_num = arm.second->assigned_blocks.size();
+            if (arm.second->canCatch(cur_pos)
+                && cur_blocks_num < blocks_num) {
                 blocks_num = cur_blocks_num;
-                selected_arm = arm;
+                selected_arm = arm.second;
             }
         }
 
@@ -123,9 +132,11 @@ void Scheduler::schedule()
     }
 
     // delete blocks
-    for (int block_id : block_id_to_remove) {
-        delete blocks[block_id];
-        blocks.erase(block_id);
+    for (Block *block : blocks_to_remove) {
+        Arm *arm = arms[block->consumer_client_id];
+        if (arm) arm->assigned_blocks.erase(block->block_id);
+        blocks.erase(block->block_id);
+        delete block;
     }
 }
 
@@ -282,8 +293,7 @@ void Scheduler::addArm(double x, double y, double radius, int client_id)
 
     // set producer and consumer
     new_arm->producer_client_id = prev_camera->client_id;
-    prev_camera->consumers.push_back(new_arm);
-    prev_camera->consumers.sort(objCompare);
+    prev_camera->consumers[client_id] = new_arm;
 }
 
 void Scheduler::addCamera(double x, double y,
@@ -304,21 +314,21 @@ void Scheduler::addCamera(double x, double y,
     cameras[client_id] = new_cam;
 
     if (prev_camera) {
+        // take all arms in range from prev_camera
         for (auto it = prev_camera->consumers.begin();
-             it != prev_camera->consumers.begin(); ++it) {
+             it != prev_camera->consumers.begin();) {
             
-            if ((*it)->x > x) {
-                // take consumers after it
-                new_cam->consumers.insert(new_cam->consumers.begin(),
-                                          it, prev_camera->consumers.end());
-                prev_camera->consumers.erase(it, prev_camera->consumers.end());
-                break;
-            }
+            Arm *arm = it->second;
+            if (arm->x > x) {
+                new_cam->consumers[arm->client_id] = arm;
+                it = prev_camera->consumers.erase(it);
+            } else ++it;
         }
         new_cam->end_x = prev_camera->end_x;
         prev_camera->end_x = x;
 
     } else {
+        // set new_cam->end_x to the x of the nearest camera behind
         for (auto &cam : cameras) {
             double cam_start_x = cam.second->x;
             if (cam_start_x > x && cam_start_x < new_cam->end_x) {
@@ -327,27 +337,72 @@ void Scheduler::addCamera(double x, double y,
         }
 
         for (auto &arm : arms) {
-            // take all consumers in range
+            // take all arms in range
             if (arm.second->x < new_cam->end_x
                 && arm.second->x > new_cam->x) {
                 
-                new_cam->consumers.push_back(arm.second);
+                new_cam->consumers[arm.second->client_id]
+                    = arm.second;
             }
         }
-        new_cam->consumers.sort(objCompare);
     }
 
+    // set arm.producer_client_id
     for (auto consumer : new_cam->consumers) {
-        consumer->producer_client_id = client_id;
+        consumer.second->producer_client_id = client_id;
     }
 }
 
 void Scheduler::removeArm(int client_id)
 {
+    Arm *arm = arms[client_id];
+    if (!arm) return;
 
+    Camera *cam = cameras[arm->producer_client_id];
+    if (cam) cam->consumers.erase(arm->client_id);
+
+    arms.erase(client_id);
+    delete arm;
 }
 
 void Scheduler::removeCamera(int client_id)
 {
+    Camera *camera = cameras[client_id];
+    if (!camera) return;
 
+    cameras.erase(client_id);
+
+    // find the nearest camera in front
+    Camera *prev_camera = nullptr;
+    double min_dist = std::numeric_limits<double>::max();
+    for (auto &cam : cameras) {
+        if (cam.second->x < camera->x
+            && (!prev_camera
+                || (camera->x - cam.second->x) < min_dist)) {
+            min_dist = camera->x - cam.second->x;
+            prev_camera = cam.second;
+        }
+    }
+
+    if (!prev_camera) {
+        for (auto &arm : camera->consumers) {
+            arm.second->producer_client_id = -1;
+        }
+        delete camera;
+        return;
+    }
+
+    // blocks and arms of camera will be inherited by prev_camera
+    for (auto &arm : camera->consumers) {
+        arm.second->producer_client_id = prev_camera->client_id;
+        prev_camera->consumers[arm.second->client_id] = arm.second;
+    }
+
+    for (auto &block : blocks) {
+        if (block.second->producer_client_id == client_id) {
+            block.second->producer_client_id == prev_camera->client_id;
+        }
+    }
+    
+    delete camera;
 }

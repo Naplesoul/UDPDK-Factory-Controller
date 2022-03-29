@@ -1,6 +1,7 @@
 #include "Objects.h"
 
 #include <string>
+#include <math.h>
 #include <jsoncpp/json/json.h>
 
 int Object::next_id = 0;
@@ -76,6 +77,16 @@ std::string Block::toJsonString(TimePoint cur_time)
 void Arm::updateHeartbeat()
 {
     last_heartbeat_time = std::chrono::system_clock::now();
+}
+
+bool Arm::canCatch(Point pos)
+{
+    double d = y - pos.y;
+    double l2 = radius * radius - d * d;
+    if (l2 <= 0) return false;
+
+    double max_x = x + sqrt(l2);
+    return pos.x < max_x;
 }
 
 std::string Arm::toJsonString()

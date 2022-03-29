@@ -68,6 +68,7 @@ public:
     std::map<int, Block *> assigned_blocks;
 
     void updateHeartbeat();
+    bool canCatch(Point pos);
     virtual std::string toJsonString() override;
     virtual std::string toJsonString(TimePoint cur_time) override;
 
@@ -84,7 +85,7 @@ public:
     double end_x = std::numeric_limits<double>::max();
     int client_id;
     TimePoint last_heartbeat_time;
-    std::list<Arm *> consumers;
+    std::map<int, Arm *> consumers;
 
     void updateHeartbeat();
     virtual std::string toJsonString() override;
