@@ -51,6 +51,14 @@
         "utility": "cpp",
         "memory_resource": "cpp",
         "future": "cpp",
-        "numeric": "cpp"
+        "numeric": "cpp",
+        "atomic": "cpp",
+        "cstdarg": "cpp",
+        "unordered_set": "cpp",
+        "algorithm": "cpp",
+        "iterator": "cpp",
+        "random": "cpp",
+        "cinttypes": "cpp",
+        "typeindex": "cpp"
     }
 }

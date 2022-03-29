@@ -7,7 +7,9 @@
 #include "Objects.h"
 #include "UDPServer.h"
 
-uint64_t getCurTime();
+uint64_t getCurMs();
+uint64_t getCurUs();
+TimePoint getCurTime();
 
 class Scheduler
 {
@@ -22,6 +24,7 @@ private:
     // block_id => block
     std::map<int, Block *> blocks;
 
+    void schedule();
     void sendTasks();
     void handleMsg();
 
@@ -34,9 +37,9 @@ public:
     ~Scheduler();
 
     void run();
-    
-    void addArm(double x, double y, double angle,
-                double radius, int client_id, bool enabled);
-    void addCamera(double x, double y, double angle,
+
+    void addArm(double x, double y, double radius,
+                int client_id, bool enabled);
+    void addCamera(double x, double y,
                    double w, double h, int client_id);
 };

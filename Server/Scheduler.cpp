@@ -1,10 +1,26 @@
 #include "Scheduler.h"
 
 #include <chrono>
+#include <limits>
+#include <unistd.h>
 
-uint64_t getCurTime()
+uint64_t getCurMs()
 {
-    
+    return std::chrono::duration_cast
+        <std::chrono::milliseconds>
+        (getCurTime().time_since_epoch()).count();
+}
+
+uint64_t getCurUs()
+{
+    return std::chrono::duration_cast
+        <std::chrono::microseconds>
+        (getCurTime().time_since_epoch()).count();
+}
+
+TimePoint getCurTime()
+{
+    return std::chrono::system_clock::now();
 }
 
 Scheduler::Scheduler(UDPServer* server)
@@ -14,32 +30,96 @@ Scheduler::Scheduler(UDPServer* server)
 
 Scheduler::~Scheduler()
 {
-    
+    for (auto arm : arms) delete arm.second;
+    for (auto cam : cameras) delete cam.second;
+    for (auto block : blocks) delete block.second;
 }
 
 void Scheduler::run()
 {
-    printf("[Sim][%llu] start simulator\n", getCurTime());
+    printf("[Sim][%lu] start simulator\n", getCurMs());
 
     while (1) {
+        int64_t start_us = getCurUs();
+
         handleMsg();
+        schedule();
         sendTasks();
+
+        int64_t end_us = getCurUs();
+        int64_t time_to_sleep = start_us + 15000 - end_us;
+        if (time_to_sleep > 0) usleep(time_to_sleep);
+    }
+}
+
+void Scheduler::schedule()
+{
+    TimePoint cur_time = getCurTime();
+    std::list<int> block_id_to_remove;
+
+    for (auto &block_entry : blocks) {
+        Block *block = block_entry.second;
+        Camera *cam = cameras[block->producer_client_id];
+        if (!cam) continue;
+
+        double cur_x = block->getPosition(cur_time).x;
+        if (cur_x >= cam->end_x) {
+            // block is out of camera's domain range
+            // delete block
+            Arm *arm = arms[block->consumer_client_id];
+            if (arm) arm->assigned_blocks.erase(block->block_id);
+            block_id_to_remove.push_back(block->block_id);
+            continue;
+        }
+
+        if (block->consumer_client_id >= 0) continue;
+
+        // assign the block to an arm
+        // choose the arm with the least blocks assigned
+        size_t blocks_num = std::numeric_limits<size_t>::max();
+        Arm *selected_arm = nullptr;
+        for (auto arm : cam->consumers) {
+            size_t cur_blocks_num = arm->assigned_blocks.size();
+            if (cur_blocks_num < blocks_num) {
+                blocks_num = cur_blocks_num;
+                selected_arm = arm;
+            }
+        }
+
+        if (!selected_arm) continue;
+
+        // assign the block
+        block->consumer_client_id = selected_arm->client_id;
+        selected_arm->assigned_blocks[block->block_id] = block;
+    }
+
+    // delete blocks
+    for (int block_id : block_id_to_remove) {
+        delete blocks[block_id];
+        blocks.erase(block_id);
     }
 }
 
 void Scheduler::sendTasks()
 {
-    
+    for (auto &arm_entry : arms) {
+        Arm *arm = arm_entry.second;
+        for (auto &block_entry : arm->assigned_blocks) {
+            Block *block = block_entry.second;
+            udp_server->send2(arm->client_id, block->toJsonString());
+        }
+    }
 }
 
 void Scheduler::handleMsg()
 {
     Message* msg;
-    while (msg = udp_server->popMsg()) {
-        printf("[SIM][%llu] parse request from client: %d\n\tcontent: %s\n",
-               getCurTime(), msg->client_id, msg->content.c_str());
+    Json::Reader reader;
 
-        Json::Reader reader;
+    while (msg = udp_server->popMsg()) {
+        // printf("[SIM][%lu] parse request from client: %d\n\tcontent: %s\n",
+        //        getCurMs(), msg->client_id, msg->content.c_str());
+
         Json::Value json;
 
         if (!reader.parse(msg->content, json, false)) {
@@ -74,7 +154,6 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
     if (cameras.find(msg->client_id) == cameras.end()) {
         addCamera(json["x"].asDouble(),
                   json["y"].asDouble(),
-                  json["angle"].asDouble(),
                   json["actual_width"].asDouble(),
                   json["actual_height"].asDouble(),
                   msg->client_id);
@@ -84,16 +163,16 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
         cam->y = json["y"].asDouble();
         cam->w = json["actual_width"].asDouble();
         cam->h = json["actual_height"].asDouble();
-        cam->angle = json["angle"].asDouble();
     }
 
     // add blocks found by camera
     double speed = json["speed"].asDouble();
-    uint64_t msg_time = atoll(json["timestamp"].asString().data());
+    uint64_t msg_time_count = atoll(json["timestamp"].asString().data());
+    std::chrono::system_clock::duration duration(msg_time_count);
+    TimePoint msg_time(duration);
 
     Json::Value msg_blocks = json["blocks"];
-    for (int idx = 0; idx < blocks.size(); idx++) {
-
+    for (int idx = 0; idx < msg_blocks.size(); idx++) {
         Json::Value msg_block = msg_blocks[idx];
         int block_id = msg_block["id"].asInt();
 
@@ -130,7 +209,6 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
     if (arms.find(msg->client_id) == arms.end()) {
         addArm(json["x"].asDouble(),
                json["y"].asDouble(),
-               json["angle"].asDouble(),
                json["r"].asDouble(),
                msg->client_id,
                json["enabled"].asBool());
@@ -139,7 +217,6 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
         arm->x = json["x"].asDouble();
         arm->y = json["y"].asDouble();
         arm->radius = json["r"].asDouble();
-        arm->angle = json["angle"].asDouble();
         arm->enabled = json["enabled"].asBool();
     }
 }
@@ -152,71 +229,81 @@ void Scheduler::handleScadaMsg(Message *msg, const Json::Value &json)
     }
 }
 
-void Scheduler::addArm(double x, double y, double angle,
-                       double radius, int client_id, bool enabled)
+void Scheduler::addArm(double x, double y, double radius,
+                       int client_id, bool enabled)
 {
-    Arm *new_arm = new Arm(x, y, angle, radius, client_id, enabled);
+    Arm *new_arm = new Arm(x, y, radius, client_id, enabled);
     arms[client_id] = new_arm;
 
     // find the nearest camera in front
-    Camera *front_camera = nullptr;
+    Camera *prev_camera = nullptr;
     for (auto &cam: cameras) {
-        double cam_x = cam.second->x;
-        if (cam_x < x
-            && (front_camera == nullptr
-                || front_camera->x < cam_x)) {
-            front_camera = cam.second;
+        double cam_start_x = cam.second->x;
+        double cam_end_x = cam.second->end_x;
+        if (x > cam_start_x && x < cam_end_x) {
+            prev_camera = cam.second;
+            break;
         }
     }
 
-    if (!front_camera) return;
+    if (!prev_camera) return;
 
     // set producer and consumer
-    new_arm->producer_client_id = front_camera->client_id;
-    front_camera->consumers.push_back(new_arm);
-    front_camera->consumers.sort(objCompare);
+    new_arm->producer_client_id = prev_camera->client_id;
+    prev_camera->consumers.push_back(new_arm);
+    prev_camera->consumers.sort(objCompare);
 }
 
-void Scheduler::addCamera(double x, double y, double angle,
+void Scheduler::addCamera(double x, double y,
                           double w, double h, int client_id)
 {
-    Camera *new_cam = new Camera(x, y, angle, w, h, client_id);
+    Camera *new_cam = new Camera(x, y, w, h, client_id);
 
     // find the nearest camera in front
-    Camera *front_camera = nullptr;
+    Camera *prev_camera = nullptr;
     for (auto &cam: cameras) {
-        double cam_x = cam.second->x;
-        if (cam_x < x
-            && (front_camera == nullptr
-                || front_camera->x < cam_x)) {
-            front_camera = cam.second;
+        double cam_start_x = cam.second->x;
+        double cam_end_x = cam.second->end_x;
+        if (x > cam_start_x && x < cam_end_x) {
+            prev_camera = cam.second;
         }
     }
 
     cameras[client_id] = new_cam;
 
-    if (front_camera) {
-        for (auto it = front_camera->consumers.begin();
-             it != front_camera->consumers.begin(); ++it) {
+    if (prev_camera) {
+        for (auto it = prev_camera->consumers.begin();
+             it != prev_camera->consumers.begin(); ++it) {
             
             if ((*it)->x > x) {
                 // take consumers after it
                 new_cam->consumers.insert(new_cam->consumers.begin(),
-                                          it, front_camera->consumers.end());
-                front_camera->consumers.erase(it, front_camera->consumers.end());
+                                          it, prev_camera->consumers.end());
+                prev_camera->consumers.erase(it, prev_camera->consumers.end());
                 break;
             }
         }
+        new_cam->end_x = prev_camera->end_x;
+        prev_camera->end_x = x;
+
     } else {
+        for (auto &cam : cameras) {
+            double cam_start_x = cam.second->x;
+            if (cam_start_x > x && cam_start_x < new_cam->end_x) {
+                new_cam->end_x = cam_start_x;
+            }
+        }
+
         for (auto &arm : arms) {
-            // take all consumers after which does not have producer yet
-            if (arm.second->producer_client_id >= 0
-                || arm.second->x < x) continue;
-            new_cam->consumers.push_back(arm.second);
+            // take all consumers in range
+            if (arm.second->x < new_cam->end_x
+                && arm.second->x > new_cam->x) {
+                
+                new_cam->consumers.push_back(arm.second);
+            }
         }
         new_cam->consumers.sort(objCompare);
     }
-
 
     for (auto consumer : new_cam->consumers) {
         consumer->producer_client_id = client_id;

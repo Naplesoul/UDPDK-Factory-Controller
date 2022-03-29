@@ -10,6 +10,11 @@ bool objCompare(Object *a, Object *b)
     return a->x < b->x;
 }
 
+Point Object::getPosition(TimePoint cur_time)
+{
+    return Point(x, y);
+}
+
 std::string Object::toJsonString()
 {
     Json::Value v;
@@ -19,6 +24,51 @@ std::string Object::toJsonString()
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
     v["angle"] = Json::Value(angle);
+
+    return v.toStyledString();
+}
+
+std::string Object::toJsonString(TimePoint cur_time)
+{
+    return toJsonString();
+}
+
+Point Block::getPosition(TimePoint cur_time)
+{
+    int64_t delta_time =
+        std::chrono::duration_cast<std::chrono::milliseconds>
+        (cur_time - last_msg_time).count();
+    double cur_x = x + speed * delta_time;
+    return Point(cur_x ,y);
+}
+
+std::string Block::toJsonString()
+{
+    Json::Value v;
+
+    v["id"] = Json::Value(obj_id);
+    v["class"] = Json::Value("block");
+    v["x"] = Json::Value(x);
+    v["y"] = Json::Value(y);
+    v["speed"] = Json::Value(speed);
+    v["angle"] = Json::Value(angle);
+    v["arm"] = Json::Value(producer_client_id);
+
+    return v.toStyledString();
+}
+
+std::string Block::toJsonString(TimePoint cur_time)
+{
+    double cur_x = getPosition(cur_time).x;
+    Json::Value v;
+
+    v["id"] = Json::Value(obj_id);
+    v["class"] = Json::Value("block");
+    v["x"] = Json::Value(cur_x);
+    v["y"] = Json::Value(y);
+    v["speed"] = Json::Value(speed);
+    v["angle"] = Json::Value(angle);
+    v["arm"] = Json::Value(producer_client_id);
 
     return v.toStyledString();
 }
@@ -37,24 +87,9 @@ std::string Arm::toJsonString()
     return v.toStyledString();
 }
 
-void Block::update(int delta_time)
+std::string Arm::toJsonString(TimePoint cur_time)
 {
-    x += speed * delta_time;
-}
-
-std::string Block::toJsonString()
-{
-    Json::Value v;
-
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("block");
-    v["x"] = Json::Value(x);
-    v["y"] = Json::Value(y);
-    v["speed"] = Json::Value(speed);
-    v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(producer_client_id);
-
-    return v.toStyledString();
+    return toJsonString();
 }
 
 std::string Camera::toJsonString()
@@ -70,4 +105,9 @@ std::string Camera::toJsonString()
     v["angle"] = Json::Value(angle);
 
     return v.toStyledString();
+}
+
+std::string Camera::toJsonString(TimePoint cur_time)
+{
+    return toJsonString();
 }
