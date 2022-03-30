@@ -94,15 +94,15 @@ void Scheduler::schedule()
 
     for (auto &block_entry : blocks) {
         Block *block = block_entry.second;
-        Camera *cam = cameras[block->producer_client_id];
-        if (!cam) {
+        auto cam = cameras.find(block->producer_client_id);
+        if (cam == cameras.end()) {
             blocks_to_remove.push_back(block);
             continue;
         }
 
         Point cur_pos = block->getPosition(cur_time);
         double cur_x = cur_pos.x;
-        if (cur_x >= cam->end_x) {
+        if (cur_x >= cam->second->end_x) {
             // block is out of camera's domain range
             // delete block
             blocks_to_remove.push_back(block);
@@ -115,7 +115,7 @@ void Scheduler::schedule()
         // choose the arm with the least blocks assigned
         size_t blocks_num = std::numeric_limits<size_t>::max();
         Arm *selected_arm = nullptr;
-        for (auto &arm : cam->consumers) {
+        for (auto &arm : cam->second->consumers) {
             size_t cur_blocks_num = arm.second->assigned_blocks.size();
             if (arm.second->canCatch(cur_pos)
                 && cur_blocks_num < blocks_num) {
@@ -133,8 +133,9 @@ void Scheduler::schedule()
 
     // delete blocks
     for (Block *block : blocks_to_remove) {
-        Arm *arm = arms[block->consumer_client_id];
-        if (arm) arm->assigned_blocks.erase(block->block_id);
+        auto arm = arms.find(block->consumer_client_id);
+        if (arm != arms.end())
+            arm->second->assigned_blocks.erase(block->block_id);
         blocks.erase(block->block_id);
         delete block;
     }
@@ -200,8 +201,8 @@ void Scheduler::handleMsg()
 
 void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
 {
-    Camera *cam = cameras[msg->client_id];
-    if (cam) cam->updateHeartbeat();
+    auto cam = cameras.find(msg->client_id);
+    if (cam != cameras.end()) cam->second->updateHeartbeat();
 
     if (json["message_type"].empty()) {
         printf("\terror: missing message_type!!\n");
@@ -209,7 +210,7 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
     }
 
     if (json["message_type"].asString() == "heartbeat") {
-        if (!cam) {
+        if (cam == cameras.end()) {
             addCamera(json["x"].asDouble(),
                       json["y"].asDouble(),
                       json["w"].asDouble(),
@@ -219,7 +220,7 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
         return;
     }
 
-    if (!cam) return;
+    if (cam == cameras.end()) return;
 
     if (!json["blocks"].isArray()
         || json["speed"].empty()
@@ -240,8 +241,9 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
         Json::Value msg_block = msg_blocks[idx];
         int block_id = msg_block["id"].asInt();
 
-        Block *block = blocks[block_id];
-        if (block) {
+        auto blk = blocks.find(block_id);
+        if (blk != blocks.end()) {
+            Block *block = blk->second;
             // udp packets may not come in order
             if (msg_time > block->last_msg_time) {
                 block->x = msg_block["x"].asDouble();
@@ -264,8 +266,8 @@ void Scheduler::handleCamMsg(Message *msg, const Json::Value &json)
 
 void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
 {
-    Arm *arm = arms[msg->client_id];
-    if (arm) arm->updateHeartbeat();
+    auto arm = arms.find(msg->client_id);
+    if (arm != arms.end()) arm->second->updateHeartbeat();
 
     if (json["message_type"].empty()) {
         printf("\terror: missing message_type!!\n");
@@ -273,7 +275,7 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
     }
 
     if (json["message_type"].asString() == "heartbeat") {
-        if (!arm) {
+        if (arm == arms.end()) {
             addArm(json["x"].asDouble(),
                    json["y"].asDouble(),
                    json["r"].asDouble(),
@@ -282,7 +284,7 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
         return;
     }
     
-    if (!arm) return;
+    if (arm == arms.end()) return;
 }
 
 void Scheduler::handleScadaMsg(Message *msg, const Json::Value &json)
@@ -373,23 +375,24 @@ void Scheduler::addCamera(double x, double y,
 
 void Scheduler::removeArm(int client_id)
 {
-    Arm *arm = arms[client_id];
-    if (!arm) return;
+    auto arm = arms.find(client_id);
+    if (arm == arms.end()) return;
 
-    Camera *cam = cameras[arm->producer_client_id];
-    if (cam) cam->consumers.erase(arm->client_id);
+    auto cam = cameras.find(arm->second->producer_client_id);
+    if (cam != cameras.end())
+        cam->second->consumers.erase(arm->second->client_id);
 
-    arms.erase(client_id);
-    delete arm;
+    arms.erase(arm);
+    delete arm->second;
 }
 
 void Scheduler::removeCamera(int client_id)
 {
-    Camera *camera = cameras[client_id];
-    if (!camera) return;
+    auto cam = cameras.find(client_id);
+    if (cam == cameras.end()) return;
 
-    cameras.erase(client_id);
-
+    cameras.erase(cam);
+    Camera *camera = cam->second;
     // find the nearest camera in front
     Camera *prev_camera = nullptr;
     double min_dist = std::numeric_limits<double>::max();

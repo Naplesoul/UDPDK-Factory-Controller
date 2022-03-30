@@ -60,16 +60,19 @@ void UDPServer::run()
         printf("[UDP] received %lu bytes from client ip: %s, port:%d\n",
             strlen(buf), inet_ntoa(client_addr.sin_addr), client_addr.sin_port);
         
+        UDPClient *client;
         uint64_t addr = getAddr(client_addr);
-        UDPClient *client = clients_addr_map[addr];
+        auto clt = clients_addr_map.find(addr);
 
-        if (!client) {
+        if (clt == clients_addr_map.end()) {
             client = new UDPClient(client_addr);
 
             client_mtx.lock();
             clients_addr_map[addr] = client;
             clients_id_map[client->client_id] = client;
             client_mtx.unlock();
+        } else {
+            client = clt->second;
         }
 
         msg_mtx.lock();
@@ -96,27 +99,27 @@ Message *UDPServer::popMsg()
 void UDPServer::removeClient(int client_id)
 {
     client_mtx.lock();
-    UDPClient *client = clients_id_map[client_id];
-    if (client) {
-        uint64_t addr = getAddr(client->addr);
+    auto client = clients_id_map.find(client_id);
+    if (client != clients_id_map.end()) {
+        uint64_t addr = getAddr(client->second->addr);
         clients_addr_map.erase(addr);
+        clients_id_map.erase(client);
     }
-    clients_id_map.erase(client_id);
     client_mtx.unlock();
 }
 
 void UDPServer::send2(int client_id, std::string msg)
 {
-    UDPClient *client;
     struct sockaddr_in addr;
     const socklen_t len = sizeof(struct sockaddr_in);
 
     client_mtx.lock();
-    client = clients_id_map[client_id];
-    if (client) addr = client->addr;
+    auto client = clients_id_map.find(client_id);
+    if (client != clients_id_map.end())
+        addr = client->second->addr;
     client_mtx.unlock();
 
-    if (!client) return;
+    if (client == clients_id_map.end()) return;
     sendto(server_fd, msg.data(), msg.size(),
         0, (struct sockaddr *)&addr, len);
 }
