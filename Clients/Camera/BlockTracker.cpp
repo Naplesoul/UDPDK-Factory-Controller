@@ -83,7 +83,8 @@ std::string BlockTracker::toString()
         blk_arr.append(blk);
     }
     msg_json["blocks"] = blk_arr;
-    return msg_json.toStyledString();
+    return Json::FastWriter().write(msg_json);
+    // return msg_json.toStyledString();
 }
 
 std::string BlockTracker::toHeartbeatString()
@@ -95,7 +96,8 @@ std::string BlockTracker::toHeartbeatString()
     msg_json["y"] = y;
     msg_json["w"] = actual_width;
     msg_json["h"] = actual_height;
-    return msg_json.toStyledString();
+    return Json::FastWriter().write(msg_json);
+    // return msg_json.toStyledString();
 }
 
 bool BlockTracker::calibrate(cv::Mat &frame)

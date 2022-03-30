@@ -30,7 +30,8 @@ Json::Value Object::toJson()
 
 std::string Object::toJsonString()
 {
-    return toJson().toStyledString();
+    return Json::FastWriter().write(toJson());
+    // return toJson().toStyledString();
 }
 
 Point Block::getPosition(TimePoint cur_time)

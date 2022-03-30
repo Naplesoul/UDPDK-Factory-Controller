@@ -152,7 +152,8 @@ void Scheduler::sendTasks()
             arr.append(b.second->toJson());
         v["blocks"] = arr;
 
-        udp_server->send2(arm->client_id, v.toStyledString());
+        udp_server->send2(arm->client_id, Json::FastWriter().write(v));
+        // udp_server->send2(arm->client_id, v.toStyledString());
     }
 
     if (scada) {
@@ -171,7 +172,8 @@ void Scheduler::sendTasks()
         v["blocks"] = blk_arr;
         v["cameras"] = cam_arr;
         
-        udp_server->send2(scada->client_id, v.toStyledString());
+        udp_server->send2(scada->client_id, Json::FastWriter().write(v));
+        // udp_server->send2(scada->client_id, v.toStyledString());
     }
 }
 
