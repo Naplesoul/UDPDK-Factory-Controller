@@ -10,8 +10,7 @@
 #include <vector>
 #include <math.h>
 #include <iostream>
-
-#include "cjson/cJSON.h"
+#include <jsoncpp/json/json.h>
 
 void drawRect(cv::Mat &frame, cv::RotatedRect &rect)
 {
@@ -29,32 +28,33 @@ float pointDist(cv::Point2f &p1, cv::Point2f &p2)
     return dist;
 }
 
-BlockTracker::BlockTracker(cJSON *config_json):
+BlockTracker::BlockTracker(const Json::Value &cfg_json):
     speed(0), next_block_id(0),
     last_update_time(std::chrono::system_clock::now())
 {
-    id = cJSON_GetObjectItem(config_json, "id")->valueint;
+    x = cfg_json["x"].asDouble();
+    y = cfg_json["y"].asDouble();
 
-    cJSON *min = cJSON_GetObjectItem(config_json, "rgb_min");
-    cJSON *max = cJSON_GetObjectItem(config_json, "rgb_max");
-    rgb_min = cv::Scalar(cJSON_GetObjectItem(min, "R")->valuedouble,
-                         cJSON_GetObjectItem(min, "G")->valuedouble,
-                         cJSON_GetObjectItem(min, "B")->valuedouble);
-    rgb_max = cv::Scalar(cJSON_GetObjectItem(max, "R")->valuedouble,
-                         cJSON_GetObjectItem(max, "G")->valuedouble,
-                         cJSON_GetObjectItem(max, "B")->valuedouble);
+    Json::Value min = cfg_json["rgb_min"];
+    Json::Value max = cfg_json["rgb_max"];
+    rgb_min = cv::Scalar(min["R"].asDouble(),
+                         min["G"].asDouble(),
+                         min["B"].asDouble());
+    rgb_max = cv::Scalar(max["R"].asDouble(),
+                         max["G"].asDouble(),
+                         max["B"].asDouble());
 
-    position_area_max = cJSON_GetObjectItem(config_json, "position_area_max")->valuedouble;
-    position_area_min = cJSON_GetObjectItem(config_json, "position_area_min")->valuedouble;
+    position_area_max = cfg_json["position_area_max"].asDouble();
+    position_area_min = cfg_json["position_area_min"].asDouble();
 
-    area_min = cJSON_GetObjectItem(config_json, "area_min")->valuedouble;
-    area_max = cJSON_GetObjectItem(config_json, "area_max")->valuedouble;
+    area_min = cfg_json["area_min"].asDouble();
+    area_max = cfg_json["area_max"].asDouble();
 
-    threshold_x = cJSON_GetObjectItem(config_json, "threshold_x")->valuedouble;
-    threshold_y = cJSON_GetObjectItem(config_json, "threshold_y")->valuedouble;
+    threshold_x = cfg_json["threshold_x"].asDouble();
+    threshold_y = cfg_json["threshold_y"].asDouble();
 
-    actual_width = cJSON_GetObjectItem(config_json, "actual_width")->valuedouble;
-    actual_height = cJSON_GetObjectItem(config_json, "actual_height")->valuedouble;
+    actual_width = cfg_json["actual_width"].asDouble();
+    actual_height = cfg_json["actual_height"].asDouble();
 }
 
 uint32_t BlockTracker::blockNum()
@@ -64,29 +64,38 @@ uint32_t BlockTracker::blockNum()
 
 std::string BlockTracker::toString()
 {
-    cJSON *message_json = cJSON_CreateObject();
-    cJSON_AddStringToObject(message_json, "source", "camera");
-    cJSON_AddNumberToObject(message_json, "id", id);
-    cJSON_AddNumberToObject(message_json, "speed", speed);
-    cJSON_AddStringToObject(message_json, "timestamp",
-        std::to_string((uint64_t)last_update_time.time_since_epoch().count()).data());
-    cJSON_AddNumberToObject(message_json, "actual_width", actual_width);
-    cJSON_AddNumberToObject(message_json, "actual_height", actual_height);
-    cJSON_AddArrayToObject(message_json, "blocks");
-    cJSON *blocks_array = cJSON_GetObjectItem(message_json, "blocks");
-    for (std::list<Block>::iterator block = blocks.begin();
-        block != blocks.end(); ++block) {
-        
-        cJSON *block_json = cJSON_CreateObject();
-        cJSON_AddNumberToObject(block_json, "id", block->block_id);
-        cJSON_AddNumberToObject(block_json, "x", block->x);
-        cJSON_AddNumberToObject(block_json, "y", block->y);
-        cJSON_AddNumberToObject(block_json, "angle", block->angle);
-        cJSON_AddItemToArray(blocks_array, block_json);
+    Json::Value msg_json;
+    msg_json["source"] = "camera";
+    msg_json["message_type"] = "normal";
+    msg_json["speed"] = speed;
+    msg_json["timestamp"] = std::to_string(
+        (uint64_t)last_update_time.time_since_epoch().count());
+    
+    Json::Value blk_arr;
+    for (const Block &block : blocks) {
+        Json::Value blk;
+
+        blk["id"] = block.block_id;
+        blk["x"] = block.x;
+        blk["y"] = block.y;
+        blk["angle"] = block.angle;
+
+        blk_arr.append(blk);
     }
-    std::string str(cJSON_PrintUnformatted(message_json));
-    cJSON_free(message_json);
-    return str;
+    msg_json["blocks"] = blk_arr;
+    return msg_json.toStyledString();
+}
+
+std::string BlockTracker::toHeartbeatString()
+{
+    Json::Value msg_json;
+    msg_json["source"] = "camera";
+    msg_json["message_type"] = "heartbeat";
+    msg_json["x"] = x;
+    msg_json["y"] = y;
+    msg_json["w"] = actual_width;
+    msg_json["h"] = actual_height;
+    return msg_json.toStyledString();
 }
 
 bool BlockTracker::calibrate(cv::Mat &frame)

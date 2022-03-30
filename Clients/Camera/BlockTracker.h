@@ -9,7 +9,7 @@
 #include <vector>
 #include <chrono>
 #include <stdint.h>
-#include "cjson/cJSON.h"
+#include <jsoncpp/json/json.h>
 #include "opencv2/opencv.hpp"
 
 void drawRect(cv::Mat &frame, cv::RotatedRect &rect);
@@ -32,8 +32,7 @@ private:
     // length measured in mm
     // time measured in ms
     // speed measured in mm/ms, aka. m/s
-    uint32_t id;
-    
+    double x, y;
     cv::Scalar rgb_min;
     cv::Scalar rgb_max;
 
@@ -71,11 +70,12 @@ private:
     float updateBlock(const cv::RotatedRect &rect, int64_t interval_ms);
 
 public:
-    BlockTracker(cJSON *config_json);
+    BlockTracker(const Json::Value &cfg_json);
     ~BlockTracker() {}
 
     uint32_t blockNum();
     std::string toString();
+    std::string toHeartbeatString();
     bool calibrate(cv::Mat &frame);
     void update(cv::Mat &frame,
                 std::chrono::system_clock::time_point capture_time);

@@ -9,10 +9,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include "cjson/cJSON.h"
+#include <jsoncpp/json/json.h>
 #include "opencv2/opencv.hpp"
 
 #include "BlockTracker.h"
@@ -41,12 +40,16 @@ int main(int argc,char *argv[])
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
 
-    cJSON *config_json = cJSON_Parse(config_buf);
+    Json::Reader reader;
+    Json::Value config_json;
+
+    reader.parse(config_buf, config_json, false);
+    
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(
-        cJSON_GetObjectItem(config_json, "server_ip")->valuestring);
-    server_addr.sin_port = htons(
-        cJSON_GetObjectItem(config_json, "server_port")->valueint);
+    server_addr.sin_addr.s_addr =
+        inet_addr(config_json["server_ip"].asCString());
+    server_addr.sin_port =
+        htons(config_json["server_port"].asInt());
     socklen_t sock_len = sizeof(server_addr);
 
     cv::VideoCapture capture(0);
@@ -57,7 +60,13 @@ int main(int argc,char *argv[])
     do {
         capture.read(frame);
     } while (!tracker.calibrate(frame));
-    sleep(3);
+
+    std::string heartbeat = tracker.toHeartbeatString();
+    sendto(client_fd, heartbeat.data(), heartbeat.length(), 0,
+           (struct sockaddr *)&server_addr, sock_len);
+    std::cout << heartbeat << std::endl;
+
+    sleep(1);
 
     uint32_t block_nums[3];
     uint32_t frame_num = 0;
@@ -68,8 +77,12 @@ int main(int argc,char *argv[])
             block_nums[1] == block_nums[2]) {
             
             std::string json_str = tracker.toString();
+            std::cout << json_str << std::endl;
             sendto(client_fd, json_str.data(), json_str.length(), 0,
-                (struct sockaddr *)&server_addr, sock_len);
+                   (struct sockaddr *)&server_addr, sock_len);
+        } else {
+            sendto(client_fd, heartbeat.data(), heartbeat.length(), 0,
+                   (struct sockaddr *)&server_addr, sock_len);
         }
         usleep(50000);
     }
