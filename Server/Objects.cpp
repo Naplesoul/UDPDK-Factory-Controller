@@ -6,31 +6,6 @@
 
 int Object::next_id = 0;
 
-std::string
-toJsonString(const std::map<int, Block *> &m)
-{
-    Json::Value v;
-    Json::Value arr;
-
-    for (auto &b : m) {
-        Json::Value block;
-
-        block["id"] = Json::Value(b.second->block_id);
-        block["x"] = Json::Value(b.second->x);
-        block["y"] = Json::Value(b.second->y);
-        block["speed"] = Json::Value(b.second->speed);
-        block["angle"] = Json::Value(b.second->angle);
-        block["timestamp"] = Json::Value(std::to_string(
-            b.second->last_msg_time.time_since_epoch().count()));
-        
-        arr.append(block);
-    }
-
-    v["blocks"] = arr;
-
-    return v.toStyledString();
-}
-
 bool objCompare(Object *a, Object *b)
 {
     return a->x < b->x;
@@ -41,22 +16,21 @@ Point Object::getPosition(TimePoint cur_time)
     return Point(x, y);
 }
 
-std::string Object::toJsonString()
+Json::Value Object::toJson()
 {
     Json::Value v;
 
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("object");
+    v["obj_id"] = Json::Value(obj_id);
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
     v["angle"] = Json::Value(angle);
 
-    return v.toStyledString();
+    return v;
 }
 
-std::string Object::toJsonString(TimePoint cur_time)
+std::string Object::toJsonString()
 {
-    return toJsonString();
+    return toJson().toStyledString();
 }
 
 Point Block::getPosition(TimePoint cur_time)
@@ -68,35 +42,20 @@ Point Block::getPosition(TimePoint cur_time)
     return Point(cur_x ,y);
 }
 
-std::string Block::toJsonString()
+Json::Value Block::toJson()
 {
     Json::Value v;
 
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("block");
+    v["obj_id"] = Json::Value(obj_id);
+    v["id"] = Json::Value(block_id);
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
-    v["speed"] = Json::Value(speed);
     v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(consumer_client_id);
-
-    return v.toStyledString();
-}
-
-std::string Block::toJsonString(TimePoint cur_time)
-{
-    double cur_x = getPosition(cur_time).x;
-    Json::Value v;
-
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("block");
-    v["x"] = Json::Value(cur_x);
-    v["y"] = Json::Value(y);
     v["speed"] = Json::Value(speed);
-    v["angle"] = Json::Value(angle);
-    v["arm"] = Json::Value(consumer_client_id);
+    v["timestamp"] = Json::Value(std::to_string(
+        last_msg_time.time_since_epoch().count()));
 
-    return v.toStyledString();
+    return v;
 }
 
 void Arm::updateHeartbeat()
@@ -114,22 +73,21 @@ bool Arm::canCatch(Point pos)
     return pos.x < max_x;
 }
 
-std::string Arm::toJsonString()
+Json::Value Arm::toJson()
 {
     Json::Value v;
 
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("arm");
+    v["obj_id"] = Json::Value(obj_id);
+    v["id"] = Json::Value(client_id);
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
-    v["angle"] = Json::Value(angle);
 
-    return v.toStyledString();
-}
+    Json::Value arr;
+    for (auto &b : assigned_blocks)
+        arr.append(b.second->block_id);
+    v["block_obj_ids"] = arr;
 
-std::string Arm::toJsonString(TimePoint cur_time)
-{
-    return toJsonString();
+    return v;
 }
 
 void Camera::updateHeartbeat()
@@ -137,24 +95,18 @@ void Camera::updateHeartbeat()
     last_heartbeat_time = std::chrono::system_clock::now();
 }
 
-std::string Camera::toJsonString()
+Json::Value Camera::toJson()
 {
     Json::Value v;
 
-    v["id"] = Json::Value(obj_id);
-    v["class"] = Json::Value("camera");
+    v["obj_id"] = Json::Value(obj_id);
+    v["id"] = Json::Value(client_id);
     v["x"] = Json::Value(x);
     v["y"] = Json::Value(y);
     v["w"] = Json::Value(w);
     v["h"] = Json::Value(h);
-    v["angle"] = Json::Value(angle);
 
-    return v.toStyledString();
-}
-
-std::string Camera::toJsonString(TimePoint cur_time)
-{
-    return toJsonString();
+    return v;
 }
 
 void SCADA::updateHeartbeat()

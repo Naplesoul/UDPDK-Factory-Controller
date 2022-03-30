@@ -5,18 +5,15 @@
 #include <string>
 #include <limits>
 #include <chrono>
+#include <jsoncpp/json/json.h>
 
 using TimePoint = std::chrono::system_clock::time_point;
-
-std::string
-toJsonString(const std::map<int, Block *> &m);
 
 struct Point
 {
     double x, y;
     Point(double x, double y): x(x), y(y) {}
 };
-
 
 class Object
 {
@@ -29,9 +26,9 @@ public:
     double angle;
 
     virtual void update(int delta_time) {}
-    virtual Point getPosition(TimePoint cur_time);
+    virtual Json::Value toJson();
     virtual std::string toJsonString();
-    virtual std::string toJsonString(TimePoint cur_time);
+    virtual Point getPosition(TimePoint cur_time);
 
     Object(double x, double y, double angle):
         obj_id(next_id++), x(x), y(y), angle(angle) {}
@@ -49,9 +46,8 @@ public:
     double speed;
     TimePoint last_msg_time;
 
+    virtual Json::Value toJson() override;
     virtual Point getPosition(TimePoint cur_time) override;
-    virtual std::string toJsonString() override;
-    virtual std::string toJsonString(TimePoint cur_time) override;
 
     Block(double x, double y, double angle, int block_id,
           int producer_client_id, double speed, TimePoint msg_time):
@@ -72,8 +68,7 @@ public:
 
     void updateHeartbeat();
     bool canCatch(Point pos);
-    virtual std::string toJsonString() override;
-    virtual std::string toJsonString(TimePoint cur_time) override;
+    virtual Json::Value toJson() override;
 
     Arm(double x, double y, double radius, int client_id):
         Object(x, y, 0), radius(radius), client_id(client_id),
@@ -91,8 +86,7 @@ public:
     std::map<int, Arm *> consumers;
 
     void updateHeartbeat();
-    virtual std::string toJsonString() override;
-    virtual std::string toJsonString(TimePoint cur_time) override;
+    virtual Json::Value toJson() override;
 
     Camera(double x, double y,
            double w, double h, int client_id):

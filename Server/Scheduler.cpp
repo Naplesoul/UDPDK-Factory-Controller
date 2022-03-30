@@ -144,7 +144,33 @@ void Scheduler::sendTasks()
 {
     for (auto &arm_entry : arms) {
         Arm *arm = arm_entry.second;
-        udp_server->send2(arm->client_id, toJsonString(arm->assigned_blocks));
+        Json::Value v;
+        Json::Value arr;
+
+        for (auto &b : arm->assigned_blocks)
+            arr.append(b.second->toJson());
+        v["blocks"] = arr;
+
+        udp_server->send2(arm->client_id, v.toStyledString());
+    }
+
+    if (scada) {
+        Json::Value v;
+        Json::Value arm_arr;
+        Json::Value blk_arr;
+        Json::Value cam_arr;
+
+        for (auto &a : arms) arm_arr.append(a.second->toJson());
+        for (auto &b : blocks) blk_arr.append(b.second->toJson());
+        for (auto &c : cameras) cam_arr.append(c.second->toJson());
+
+        v["timestamp"] = Json::Value(std::to_string(
+            std::chrono::system_clock::now().time_since_epoch().count()));
+        v["arms"] = arm_arr;
+        v["blocks"] = blk_arr;
+        v["cameras"] = cam_arr;
+        
+        udp_server->send2(scada->client_id, v.toStyledString());
     }
 }
 
