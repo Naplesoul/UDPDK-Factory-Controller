@@ -3,13 +3,13 @@
 #include <map>
 #include <list>
 #include <mutex>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <string.h>
+#include <netinet/in.h>
+
+#define BUFFER_SIZE 1024
+#define DEFAULT_SERVER_PORT 8080
+
+uint64_t getAddr(const struct sockaddr_in &addr);
 
 class UDPClient
 {
@@ -40,16 +40,18 @@ class UDPServer
 {
 private:
     int server_fd;
-    std::mutex req_list_mtx;
-    // std::map<int, Client*> clients;
-    std::list<UDPClient*> mClients;
-    std::list<Message*> mPendingRequests;
-public:
-    void run();
-    Message* popMsg();
-    void send2(int client_id, std::string msg);
-    void broadcast(std::string msg);
+    std::mutex msg_mtx;
+    std::mutex client_mtx;
+    std::list<Message *> pending_msgs;
+    std::map<int, UDPClient *> clients_id_map;
+    std::map<uint64_t, UDPClient *> clients_addr_map;
 
-    UDPServer(/* args */);
+public:
+    UDPServer();
     ~UDPServer();
+
+    void run();
+    Message *popMsg();
+    void removeClient(int client_id);
+    void send2(int client_id, std::string msg);
 };

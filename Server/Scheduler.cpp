@@ -180,17 +180,11 @@ void Scheduler::handleMsg()
     Json::Reader reader;
 
     while (msg = udp_server->popMsg()) {
-        // printf("[SIM][%lu] parse request from client: %d\n\tcontent: %s\n",
-        //        getCurMs(), msg->client_id, msg->content.c_str());
-
         Json::Value json;
 
         if (!reader.parse(msg->content, json, false)) {
             printf("\terror: json parse error\n");
-            continue;
-        }
-        
-        if (json["source"].empty()) {   //check source
+        } else if (json["source"].empty()) {   //check source
             printf("\terror: missing source!!\n");
         } else if (json["source"].asString() == "camera") {
             handleCamMsg(msg, json);
@@ -200,6 +194,7 @@ void Scheduler::handleMsg()
             handleScadaMsg(msg, json);    
         }
         
+        delete msg;
     }
 }
 

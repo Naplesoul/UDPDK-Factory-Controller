@@ -1,13 +1,19 @@
 #include "UDPServer.h"
 
+#include <stdint.h>
 #include <arpa/inet.h>
-
-#define DEFAULT_SERVER_PORT 8080
-#define BUFFER_SIZE 1024
 
 int UDPClient::next_id = 0;
 
-UDPServer::UDPServer(/* args */)
+uint64_t getAddr(const struct sockaddr_in &addr)
+{
+    uint64_t k;
+    k = (uint64_t)addr.sin_addr.s_addr << (16);
+    k = k | (uint64_t)addr.sin_port;
+    return k;
+}
+
+UDPServer::UDPServer()
 {
     int server_port = DEFAULT_SERVER_PORT;
 
@@ -26,11 +32,11 @@ UDPServer::UDPServer(/* args */)
 
 UDPServer::~UDPServer()
 {
-    for (auto c : mClients) {
-        delete c;
+    for (auto c : clients_id_map) {
+        delete c.second;
     }
     
-    for (auto r : mPendingRequests) {
+    for (auto r : pending_msgs) {
         delete r;
     }
 }
@@ -40,69 +46,77 @@ void UDPServer::run()
     char buf[BUFFER_SIZE];
     memset(buf, 0, BUFFER_SIZE);
 
-    while (1) {
+    while (true) {
         struct sockaddr_in client_addr;
-        socklen_t length = sizeof(client_addr);
+        socklen_t length = sizeof(struct sockaddr_in);
 
-        int count = recvfrom(server_fd, buf, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &length);
+        int count = recvfrom(server_fd, buf, BUFFER_SIZE,
+            0, (struct sockaddr *)&client_addr, &length);
         if (count < 0) {
             printf("[UDP] fail to receive from client\n");
             continue;
         }
 
-        printf("[UDP] received %lu bytes from client ip: %s, port:%d\n", strlen(buf), inet_ntoa(client_addr.sin_addr), client_addr.sin_port);
+        printf("[UDP] received %lu bytes from client ip: %s, port:%d\n",
+            strlen(buf), inet_ntoa(client_addr.sin_addr), client_addr.sin_port);
+        
+        uint64_t addr = getAddr(client_addr);
+        UDPClient *client = clients_addr_map[addr];
 
-        bool new_client = true;
-        for (auto c : mClients){
-            if (c->addr.sin_addr.s_addr == client_addr.sin_addr.s_addr){
+        if (!client) {
+            client = new UDPClient(client_addr);
 
-                req_list_mtx.lock();
-                mPendingRequests.push_back(new Message(c->client_id, buf));
-                req_list_mtx.unlock();
-
-                new_client = false;
-                break;
-            }
+            client_mtx.lock();
+            clients_addr_map[addr] = client;
+            clients_id_map[client->client_id] = client;
+            client_mtx.unlock();
         }
-        if (new_client){
-            UDPClient* c = new UDPClient(client_addr);
-            mClients.push_back(c);
 
-            req_list_mtx.lock();
-            mPendingRequests.push_back(new Message(c->client_id, buf));
-            req_list_mtx.unlock();
-        }
+        msg_mtx.lock();
+        pending_msgs.push_back(new Message(client->client_id, buf));
+        msg_mtx.unlock();
     }
 }
 
-void UDPServer::broadcast(std::string msg){
-    //printf("[UDP] broadcast\n");
-    for (auto c : mClients){
-        socklen_t len = sizeof(struct sockaddr_in);
-        sendto(server_fd, msg.data(), msg.size(), 0, (struct sockaddr *)&c->addr, len);
+Message *UDPServer::popMsg()
+{
+    Message* msg = nullptr;
+    msg_mtx.lock();
+
+    if (!pending_msgs.empty()) {
+        msg = pending_msgs.front();
+        pending_msgs.pop_front();
     }
+
+    msg_mtx.unlock();
+    return msg;
 }
 
-void UDPServer::send2(int client_id, std::string msg){
-    //printf("[UDP] send to client: %d\n", client_id);
-    for (auto c : mClients){
-        if (c->client_id == client_id){
-            socklen_t len = sizeof(struct sockaddr_in);
-            sendto(server_fd, msg.data(), msg.size(), 0, (struct sockaddr *)&c->addr, len);
-            break;
-        }
+
+void UDPServer::removeClient(int client_id)
+{
+    client_mtx.lock();
+    UDPClient *client = clients_id_map[client_id];
+    if (client) {
+        uint64_t addr = getAddr(client->addr);
+        clients_addr_map.erase(addr);
     }
+    clients_id_map.erase(client_id);
+    client_mtx.unlock();
 }
 
-Message* UDPServer::popMsg(){
-    Message* req;
-    req_list_mtx.lock();
-    if (mPendingRequests.empty()) {
-        req = nullptr;
-    } else {
-        req = mPendingRequests.front();
-        mPendingRequests.pop_front();
-    }
-    req_list_mtx.unlock();
-    return req;
+void UDPServer::send2(int client_id, std::string msg)
+{
+    UDPClient *client;
+    struct sockaddr_in addr;
+    const socklen_t len = sizeof(struct sockaddr_in);
+
+    client_mtx.lock();
+    client = clients_id_map[client_id];
+    if (client) addr = client->addr;
+    client_mtx.unlock();
+
+    if (!client) return;
+    sendto(server_fd, msg.data(), msg.size(),
+        0, (struct sockaddr *)&addr, len);
 }
