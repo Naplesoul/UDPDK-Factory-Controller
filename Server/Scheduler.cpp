@@ -285,6 +285,41 @@ void Scheduler::handleArmMsg(Message *msg, const Json::Value &json)
     }
     
     if (arm == arms.end()) return;
+
+    if (!json["block_ids"].isArray()) {
+        printf("\terror: missing arguement(s)!!\n");
+        return;
+    }
+
+    if (json["message_type"].asString() == "catch_success") {
+        Json::Value block_ids = json["block_ids"];
+        for (int idx = 0; idx < block_ids.size(); idx++) {
+            int block_id = block_ids[idx].asInt();
+
+            auto block = blocks.find(block_id);
+            if (block == blocks.end()) continue;
+
+            auto arm = arms.find(block->second->consumer_client_id);
+            if (arm != arms.end())
+                arm->second->assigned_blocks.erase(block->second->block_id);
+            blocks.erase(block);
+            delete block->second;
+        }
+    } else if (json["message_type"].asString() == "catch_fail") {
+        Json::Value block_ids = json["block_ids"];
+        for (int idx = 0; idx < block_ids.size(); idx++) {
+            int block_id = block_ids[idx].asInt();
+
+            auto block = blocks.find(block_id);
+            if (block == blocks.end()) continue;
+
+            auto arm = arms.find(block->second->consumer_client_id);
+            if (arm != arms.end())
+                arm->second->assigned_blocks.erase(block->second->block_id);
+            
+            block->second->consumer_client_id = -1;
+        }
+    }
 }
 
 void Scheduler::handleScadaMsg(Message *msg, const Json::Value &json)
