@@ -1,13 +1,16 @@
+#include <thread>
 #include "UDPServer.h"
 #include "Scheduler.h"
-#include <thread>
+#include "dpdk.h"
+
+#define DEFAULT_SERVER_PORT 8080
 
 UDPServer* udp_server = new UDPServer();
 Scheduler* simulator = new Scheduler(udp_server);
 
-void run_udp_server()
+void recv_callback(const ofp_sockaddr_in &addr, void *buf, int nbytes)
 {
-    udp_server->run();
+    udp_server->recv_callback(addr, buf, nbytes);
 }
 
 void run_simulator()
@@ -17,10 +20,9 @@ void run_simulator()
 
 int main(int argc, char *argv[])
 {
-    std::thread udp_thread(run_udp_server);
     std::thread sim_thread(run_simulator);
+    run_dpdk_thread(argc, argv, DEFAULT_SERVER_PORT, recv_callback);
 
-    udp_thread.join();
     sim_thread.join();
 
     return 0;

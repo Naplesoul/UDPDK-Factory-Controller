@@ -4,12 +4,10 @@
 #include <list>
 #include <mutex>
 #include <string.h>
-#include <netinet/in.h>
 
-#define BUFFER_SIZE 1024
-#define DEFAULT_SERVER_PORT 8080
+#include "dpdk.h"
 
-uint64_t getAddr(const struct sockaddr_in &addr);
+uint64_t getAddr(const struct ofp_sockaddr_in &addr);
 
 class UDPClient
 {
@@ -18,9 +16,9 @@ private:
 
 public:
     int client_id;
-    struct sockaddr_in addr;
+    struct ofp_sockaddr_in addr;
     
-    UDPClient(struct sockaddr_in addr):
+    UDPClient(struct ofp_sockaddr_in addr):
         client_id(next_id++), addr(addr) {}
     ~UDPClient() {}
 };
@@ -31,8 +29,8 @@ public:
     int client_id;
     std::string content;
 
-    Message(int client_id, char *buf):
-        client_id(client_id), content(buf) {}
+    Message(int client_id, char *buf, int nbytes):
+        client_id(client_id), content(buf, nbytes) {}
     ~Message() {}
 };
 
@@ -50,8 +48,8 @@ public:
     UDPServer();
     ~UDPServer();
 
-    void run();
     Message *popMsg();
     void removeClient(int client_id);
     void send2(int client_id, std::string msg);
+    void recv_callback(const ofp_sockaddr_in &client_addr, void *buf, int nbytes);
 };
